@@ -80,7 +80,16 @@ Work happens in a clone on your PC. The NAS clone only pulls; never edit
 files there.
 
 1. Commit on the PC and push.
-2. Pull on the NAS and rebuild the container:
+2. Pull on the NAS and rebuild the container with `deploy.sh` from the
+   repo root:
+
+   ```sh
+   ssh <nas> /volume1/docker/mynotes/deploy.sh
+   ```
+
+   It fast-forwards the clone (`git pull --ff-only`), lists the new
+   commits, runs `docker compose up -d --build --remove-orphans` and shows
+   the container status. By hand, it is:
 
    ```sh
    ssh <nas> 'cd /volume1/docker/mynotes && git -c safe.directory="*" pull && /usr/local/bin/docker compose up -d --build --remove-orphans'

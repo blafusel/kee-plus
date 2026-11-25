@@ -127,6 +127,27 @@ function categories() {
 }
 const sameTerm = (a, b) => a.toLowerCase() === b.toLowerCase();
 function findCategory(term) { return categories().find(c => sameTerm(c.term, term)) || null; }
+// A category's `term` is its key (notes, views and settings refer to it); what
+// the UI shows is its name: `name` if set, else the term. Names are unique
+// among the main categories and among the subs of one main, so "Misc" can sit
+// under two mains; the second gets a key like "AI/Misc" (names have no "/").
+const catName = c => (c && typeof c.name === 'string' && c.name.trim() ? c.name : c ? c.term : '');
+function nameOf(term) { const c = findCategory(term); return c ? catName(c) : term; }
+const cleanName = s => String(s || '').trim().replace(/\s+/g, ' ');
+// The category with this name among a main's subs, or among the mains.
+function findChild(name, parentTerm) {
+  const sibs = parentTerm ? subsOf(parentTerm) : categories().filter(c => !catParent(c));
+  return sibs.find(c => sameTerm(catName(c), name)) || null;
+}
+// The first candidate no category uses as its key, else the last one with ~2, ~3…
+function uniqueKey(cands, cats) {
+  const free = k => !cats.some(c => sameTerm(c.term, k));
+  for (const k of cands) if (free(k)) return k;
+  const base = cands[cands.length - 1];
+  for (let i = 2; ; i++) if (free(`${base}~${i}`)) return `${base}~${i}`;
+}
+// The record with its name set (dropped when it equals the key).
+function withName(c, name) { const { name: _, ...rest } = c; return name === c.term ? rest : { ...rest, name }; }
 
 // Sub-categories, one level: a category may name a main category as its
 // `parent`. A parent that is missing, is the category itself or has a parent
@@ -146,7 +167,7 @@ function catFamily(term) {
 }
 // The main category of a term (itself for a main one or an unknown term).
 function mainTerm(term) { const c = findCategory(term), p = catParent(c); return p ? p.term : c ? c.term : term; }
-function catLabel(term) { const c = findCategory(term), p = catParent(c); return p ? `${p.term} › ${c.term}` : c ? c.term : term; }
+function catLabel(term) { const c = findCategory(term), p = catParent(c); return p ? `${catName(p)} › ${catName(c)}` : c ? catName(c) : term; }
 // A sub-category draws its parent's pattern with its own colour adjustment,
 // which starts as the parent's with a hue shift (subAdj).
 // A renamed category keeps its look: `look` holds the word it is drawn from.
@@ -155,68 +176,56 @@ function drawTerm(term) {
   return m ? (typeof m.look === 'string' && m.look ? m.look : m.term) : term;
 }
 
-// Rename a category everywhere: its record (keeping its look), its subs'
-// parent link, the custom order, every note with it (archived and trashed
-// too) and this device's view, open folds and collapsed groups. One Undo.
-// Returns the new term, or null when nothing changed.
+// Rename a category: only its name changes. Its key stays, so notes, views,
+// folds and the custom order need no update. The name must be free among its
+// siblings. One Undo. Returns the category's term, or null when nothing changed.
 function renameCategory(from, input) {
-  const to = String(input || '').trim().replace(/\s+/g, ' ');
-  const cat = findCategory(from);
-  if (!cat || !to || to === cat.term) return null;
+  const to = cleanName(input), cat = findCategory(from);
+  if (!cat || !to || to === catName(cat)) return null;
   if (to.includes('/')) { toast('A category name can\u2019t contain "/"'); return null; }
-  const clash = findCategory(to);
-  if (clash && !sameTerm(clash.term, cat.term)) { toast(`There is already a category "${clash.term}"`); return null; }
-  const old = cat.term, s = notes.get(SETTINGS_ID);
-  const before = { categories: categories(), catCustom: s.catCustom };
-  const patch = {
-    categories: categories().map(c => sameTerm(c.term, old) ? { ...c, term: to, look: typeof c.look === 'string' && c.look ? c.look : old }
-      : typeof c.parent === 'string' && sameTerm(c.parent, old) ? { ...c, parent: to } : c),
-  };
-  if (Array.isArray(s.catCustom)) patch.catCustom = s.catCustom.map(t => typeof t === 'string' && sameTerm(t, old) ? to : t);
-  setSettings(patch);
-  const themed = [...notes.values()].filter(n => !n.deleted && !isSettings(n) && n.theme && typeof n.theme.term === 'string' && sameTerm(n.theme.term, old));
-  const snap = themed.map(n => [n.id, n.theme]);
-  for (const n of themed) updateNote(n.id, { theme: { ...n.theme, term: to } });
-  const swapLocal = (a, b) => {
-    const la = a.toLowerCase(), lb = b.toLowerCase();
-    if (viewCat() !== null && sameTerm(viewCat(), a)) { view = 'cat:' + b; writeLS(K.view, view); }
-    if (navOpen.delete(la)) { navOpen.add(lb); writeLS(K.navOpen, [...navOpen]); }
-    if (collapsed.delete(la)) { collapsed.add(lb); writeLS(K.collapsed, [...collapsed]); }
-    if (openCat !== null && sameTerm(openCat, a)) openCat = b;
-    for (const ed of [composer, modalEd]) if (ed.d.theme && sameTerm(ed.d.theme.term, a)) { ed.d.theme = { ...ed.d.theme, term: b }; ed.chrome(); }
-  };
-  swapLocal(old, to);
+  const p = catParent(cat), clash = findChild(to, p ? p.term : '');
+  if (clash && !sameTerm(clash.term, cat.term)) { toast(`There is already a category "${catLabel(clash.term)}"`); return null; }
+  const old = catName(cat), before = categories();
+  setCategories(before.map(c => sameTerm(c.term, cat.term) ? withName(c, to) : c));
   navCatsKey = '';
-  const k = themed.length;
-  toast(`Renamed "${old}" to "${to}"` + (k ? `, ${k} note${k > 1 ? 's' : ''}` : ''), () => {
-    setSettings(before);
-    for (const [id, theme] of snap) updateNote(id, { theme });
-    swapLocal(to, old);
-    navCatsKey = '';
-  });
-  return to;
+  toast(`Renamed "${old}" to "${to}"`, () => { setCategories(before); navCatsKey = ''; });
+  return cat.term;
 }
 const wrapH = x => ((x + 180) % 360 + 360) % 360 - 180;
 const SUB_SHIFTS = [25, -25, 50, -50, 75, -75, 100, -100];
 function subAdj(parent, k) { const a = cleanAdj(parent); return { ...a, h: wrapH(a.h + SUB_SHIFTS[k % SUB_SHIFTS.length]) }; }
 
 // Add a category, or find it, and return its term. "travel/lisbon" or a
-// parent adds a sub-category, creating the main one if needed. An existing
-// category is returned as it is, wherever it sits.
+// parent (a main category's term, from a select) adds a sub-category,
+// creating the main one if needed. A name is looked up only where it would go:
+// among that main's subs, or among the mains.
 function addCategory(input, parentTerm = '') {
-  let term = String(input || '').trim().replace(/\s+/g, ' '), parent = parentTerm || '';
-  const slash = term.indexOf('/');
-  if (slash > 0 && slash < term.length - 1) { parent = term.slice(0, slash).trim(); term = term.slice(slash + 1).trim(); }
-  if (!term) return null;
-  let cats = categories();
-  const known = cats.find(c => sameTerm(c.term, term));
-  if (known) return known.term;
-  if (parent && sameTerm(parent, term)) parent = '';
-  let p = parent ? cats.find(c => sameTerm(c.term, parent)) : null;
+  let name = cleanName(input), parentName = '';
+  const slash = name.indexOf('/');
+  if (slash > 0 && slash < name.length - 1) { parentName = cleanName(name.slice(0, slash)); name = cleanName(name.slice(slash + 1)); }
+  if (!name) return null;
+  if (name.includes('/')) { toast('A category name can\u2019t contain "/"'); return null; }
+  let cats = categories(), p = null;
+  if (parentName) { // a main by that name, else the one sub with that name (its main is used below)
+    p = findChild(parentName, '');
+    const subs = p ? [] : categories().filter(c => catParent(c) && sameTerm(catName(c), parentName));
+    if (subs.length === 1) p = subs[0];
+  }
+  else if (parentTerm) p = findCategory(parentTerm);
   if (p && catParent(p)) p = catParent(p); // a sub can't have subs: use its main category
-  if (parent && !p) { p = { term: parent, ...NO_ADJ }; cats = [...cats, p]; }
-  setCategories([...cats, p ? { term, ...subAdj(p, subsOf(p.term).length), parent: p.term } : { term, ...NO_ADJ }]);
-  return term;
+  if (p && sameTerm(catName(p), name)) return p.term; // "travel/travel" is the main itself
+  if (parentName && !p) {
+    const key = uniqueKey([parentName], cats);
+    p = withName({ term: key, ...NO_ADJ }, parentName);
+    cats = [...cats, p];
+  } else {
+    const known = findChild(name, p ? p.term : '');
+    if (known) return known.term;
+  }
+  const key = uniqueKey(p ? [name, `${catName(p)}/${name}`] : [name], cats);
+  const k = p ? cats.filter(c => typeof c.parent === 'string' && sameTerm(c.parent, p.term)).length : 0;
+  setCategories([...cats, withName(p ? { term: key, ...subAdj(p, k), parent: p.term } : { term: key, ...NO_ADJ }, name)]);
+  return key;
 }
 
 // Display order of the categories (sidebar, palette, Settings, category
@@ -246,7 +255,7 @@ function orderedCats() {
 }
 function baseOrder() {
   const cats = categories(), order = catOrder();
-  if (order === 'alpha') return cats.slice().sort((a, b) => termCollator.compare(a.term, b.term));
+  if (order === 'alpha') return cats.slice().sort((a, b) => termCollator.compare(catName(a), catName(b)));
   if (order === 'created') return cats;
   const s = notes.get(SETTINGS_ID);
   const custom = Array.isArray(s.catCustom) ? s.catCustom.filter(t => typeof t === 'string').map(t => t.toLowerCase()) : [];
@@ -1002,7 +1011,7 @@ function renderNavCats() {
     const tip = `${label}: ${n} note${n === 1 ? '' : 's'}` + (k ? ` · shortcut ${k.toUpperCase()}` : '');
     const cls = (n ? '' : ' nav-empty') + (term.toLowerCase() === keep ? ' nav-keep' : '');
     return h('button', { class: 'nav-item' + (sub ? ' nav-sub' : '') + cls, type: 'button', dataset: { view: 'cat:' + term }, title: tip },
-      dot, h('span', { class: 'nav-name' }, term),
+      dot, h('span', { class: 'nav-name' }, nameOf(term)),
       h('span', { class: 'nav-meta' }, // count and key share one tight slot
         h('span', { class: 'nav-count', 'aria-label': `${n} note${n === 1 ? '' : 's'}` }, String(n)),
         k ? h('kbd', { class: 'nav-key', title: 'Shortcut key', 'aria-hidden': 'true' }, k.toUpperCase()) : null));
@@ -1014,7 +1023,7 @@ function renderNavCats() {
     if (!subs.length) { items.push(entry(c.term, false)); continue; }
     const lc = c.term.toLowerCase(), open = navOpen.has(lc) || curMain === lc || dragOpen.has(lc);
     const fold = h('button', { class: 'nav-fold' + (open ? ' open' : ''), type: 'button', dataset: { fold: c.term }, 'aria-expanded': String(open),
-      'aria-label': (open ? 'Hide' : 'Show') + ' sub-categories of ' + c.term, title: open ? 'Hide sub-categories' : `Show ${subs.length} sub-categor${subs.length > 1 ? 'ies' : 'y'}` }, icon('chev'));
+      'aria-label': (open ? 'Hide' : 'Show') + ' sub-categories of ' + catName(c), title: open ? 'Hide sub-categories' : `Show ${subs.length} sub-categor${subs.length > 1 ? 'ies' : 'y'}` }, icon('chev'));
     items.push(h('div', { class: 'nav-row' + (counts.get(lc) ? '' : ' nav-empty') + (lc === keep ? ' nav-keep' : '') }, entry(c.term, false), fold));
     if (open) for (const s of subs) items.push(entry(s.term, true));
   }
@@ -1048,7 +1057,7 @@ function catKeys(cats) {
   for (const c of cats) {
     if (digits.includes(c)) continue;
     const free = ch => ch >= 'a' && ch <= 'z' && !used.has(ch);
-    const k = [...c.term.toLowerCase()].find(free) || [...'abcdefghijklmnopqrstuvwxyz'].find(free);
+    const k = [...catName(c).toLowerCase()].find(free) || [...'abcdefghijklmnopqrstuvwxyz'].find(free);
     if (!k) break; // out of letters
     used.add(k);
     map.set(k, c.term);
@@ -1065,8 +1074,9 @@ function scheduleRender(ms = 150) { clearTimeout(renderTimer); renderTimer = set
 const hayCache = new Map(); // id -> [updatedAt, text]
 function matches(n, q) {
   let c = hayCache.get(n.id);
-  if (!c || c[0] !== n.updatedAt) {
-    c = [n.updatedAt, (n.title + '\n' + n.body + '\n' + n.items.map(i => i.text).join('\n') + '\n' + n.files.map(f => f.name).join('\n') + '\n' + (n.theme ? n.theme.term : '')).toLowerCase()];
+  const stamp = n.updatedAt + ':' + (notes.get(SETTINGS_ID)?.updatedAt || 0); // a rename changes the category text
+  if (!c || c[0] !== stamp) {
+    c = [stamp, (n.title + '\n' + n.body + '\n' + n.items.map(i => i.text).join('\n') + '\n' + n.files.map(f => f.name).join('\n') + '\n' + (n.theme ? catLabel(n.theme.term) : '')).toLowerCase()];
     hayCache.set(n.id, c);
   }
   return c[1].includes(q);
@@ -1137,7 +1147,7 @@ function render() {
     const order = [main, ...orderedCats().filter(c => catSubs.includes(c)).map(c => c.term)];
     const groups = new Map(order.map(t => [t.toLowerCase(), [t, []]]));
     for (const n of list) groups.get(n.theme.term.toLowerCase())?.[1].push(n);
-    for (const [term, ns] of groups.values()) if (ns.length) sections.push([term, pinFirst(ns), term.toLowerCase()]);
+    for (const [term, ns] of groups.values()) if (ns.length) sections.push([nameOf(term), pinFirst(ns), term.toLowerCase()]);
   } else if (groupByCat) {
     // One collapsible section per main category (its subs' notes included),
     // in Settings order, then notes without one. Pinned notes lead inside
@@ -1150,7 +1160,7 @@ function render() {
       if (!groups.has(t.toLowerCase())) groups.set(t.toLowerCase(), [t, []]);
       groups.get(t.toLowerCase())[1].push(n);
     }
-    for (const [term, ns] of groups.values()) if (ns.length) sections.push([term, pinFirst(ns), term.toLowerCase()]);
+    for (const [term, ns] of groups.values()) if (ns.length) sections.push([nameOf(term), pinFirst(ns), term.toLowerCase()]);
     if (none.length) sections.push(['No category', pinFirst(none), '']);
   } else if (!q && (view === 'notes' || cat)) {
     const pinned = list.filter(n => n.pinned), others = list.filter(n => !n.pinned);
@@ -1780,7 +1790,7 @@ navCats.addEventListener('drop', e => {
   const snap = ns.map(n => [n.id, { theme: n.theme }]);
   for (const n of ns) updateNote(n.id, { theme: { term, seed: newThemeSeed() } });
   const k = ns.length;
-  toast(`${k} note${k > 1 ? 's' : ''} moved to ${term}`, () => { for (const [id, old] of snap) updateNote(id, old); });
+  toast(`${k} note${k > 1 ? 's' : ''} moved to ${catLabel(term)}`, () => { for (const [id, old] of snap) updateNote(id, old); });
   selected.clear();
   // Re-render only once the drag has ended: removing the dragged card inside
   // the drop handler leaves Chrome's drag session hanging, and the page then
@@ -1999,7 +2009,7 @@ function fillPalette() {
   palParent.dataset.want = '';
   const tile = (term, cls = '') => {
     const sel = !!cur && sameTerm(cur.term, term);
-    const b = h('button', { class: 'th' + cls + (sel ? ' sel' : ''), type: 'button', dataset: { term }, title: catLabel(term) }, h('span', null, term));
+    const b = h('button', { class: 'th' + cls + (sel ? ' sel' : ''), type: 'button', dataset: { term }, title: catLabel(term) }, h('span', null, nameOf(term)));
     paint(b, { term, seed: 0 });
     return b;
   };
@@ -2010,7 +2020,7 @@ function fillPalette() {
     if (catParent(c)) continue;
     const subs = cats.filter(x => { const p = catParent(x); return !!p && sameTerm(p.term, c.term); });
     if (!subs.length) { items.push(tile(c.term)); continue; }
-    items.push(h('div', { class: 'pal-group', role: 'group', 'aria-label': c.term + ' and its sub-categories' },
+    items.push(h('div', { class: 'pal-group', role: 'group', 'aria-label': catName(c) + ' and its sub-categories' },
       tile(c.term, ' main'),
       h('div', { class: 'pal-subs' }, subs.map(s => tile(s.term, ' sub')))));
   }
@@ -2068,7 +2078,7 @@ const catList = h('div', { class: 'cat-list' });
 // Add form: where the new category goes. Options follow the main categories.
 const catParentSel = h('select', { class: 'cat-parent', 'aria-label': 'Add as' });
 function fillParentSelect(sel, mains, value) {
-  const opts = [['', 'Main category'], ...mains.map(t => [t, 'Under ' + t])];
+  const opts = [['', 'Main category'], ...mains.map(t => [t, 'Under ' + nameOf(t)])];
   const key = JSON.stringify(opts);
   if (sel.dataset.key !== key) {
     sel.replaceChildren(...opts.map(([v, l]) => h('option', { value: v }, l)));
@@ -2392,7 +2402,7 @@ function catRow(cat, i, all, mains) {
     h('div', { class: 'cat-head' },
       h('button', { class: 'cat-toggle', type: 'button', 'data-toggle': '', 'aria-expanded': String(open), title: 'Adjust colours' },
         h('div', { class: 'cat-prev' }, tiles),
-        h('span', { class: 'cat-term' }, term, subs.length ? h('span', { class: 'cat-n' }, ` · ${subs.length} sub`) : null),
+        h('span', { class: 'cat-term' }, catName(cat), subs.length ? h('span', { class: 'cat-n' }, ` · ${subs.length} sub`) : null),
         icon('palette')),
       h('button', { class: 'icon-btn', type: 'button', 'data-rename': '', 'aria-label': 'Rename ' + term, title: 'Rename' }, icon('pencil')),
       parent ? null : h('button', { class: 'icon-btn', type: 'button', 'data-addsub': '', 'aria-label': 'Add a sub-category to ' + term, title: 'Add sub-category' }, icon('plus')),
@@ -2402,7 +2412,7 @@ function catRow(cat, i, all, mains) {
       h('button', { class: 'icon-btn', type: 'button', 'data-rm': '', 'aria-label': 'Remove ' + term, title: 'Remove' }, icon('x'))));
   // Renaming: the name becomes a field. Enter or ✓ saves, Esc or × cancels.
   if (renamingCat !== null && sameTerm(renamingCat, term)) {
-    const input = h('input', { class: 'cat-input cat-rename-input', type: 'text', value: term, maxlength: '40', autocomplete: 'off', enterkeyhint: 'done', 'aria-label': 'New name for ' + term, 'data-rename-input': '' });
+    const input = h('input', { class: 'cat-input cat-rename-input', type: 'text', value: catName(cat), maxlength: '40', autocomplete: 'off', enterkeyhint: 'done', 'aria-label': 'New name for ' + catName(cat), 'data-rename-input': '' });
     row.firstChild.replaceWith(h('form', { class: 'cat-head cat-rename' },
       h('div', { class: 'cat-prev' }, tiles),
       input,
@@ -2533,25 +2543,29 @@ settingsEl.addEventListener('click', e => {
   if (e.target.closest('[data-reset]')) {
     const before = categories();
     saveAdj(term, { ...NO_ADJ });
-    toast(`Colours of "${term}" reset`, () => setCategories(before));
+    toast(`Colours of "${catLabel(term)}" reset`, () => setCategories(before));
     return render();
   }
   // Removing a category clears its theme from every note that has it
   // (archived and trashed too); its sub-categories become main ones. Undo
   // puts back the categories and each theme.
   if (e.target.closest('[data-rm]')) {
-    const before = categories(), subs = subsOf(term).length;
+    const before = categories(), subs = subsOf(term).length, gone = findCategory(term), goneLabel = catLabel(term);
+    const mainNames = new Set(before.filter(c => !catParent(c) && !sameTerm(c.term, term)).map(c => catName(c).toLowerCase()));
     const themed = [...notes.values()]
       .filter(n => !n.deleted && !isSettings(n) && n.theme && sameTerm(n.theme.term, term))
       .map(n => [n.id, n.theme]);
     setCategories(before.filter(c => !sameTerm(c.term, term)).map(c => {
       if (typeof c.parent !== 'string' || !sameTerm(c.parent, term)) return c;
       const { parent, ...rest } = c;
-      return rest;
+      let name = catName(c);
+      if (mainNames.has(name.toLowerCase())) name = `${name} (${catName(gone)})`; // keep main names unique
+      mainNames.add(name.toLowerCase());
+      return withName(rest, name);
     }));
     for (const [id] of themed) updateNote(id, { theme: null });
     const k = themed.length;
-    toast(`Category "${term}" removed` + (k ? `, cleared from ${k} note${k > 1 ? 's' : ''}` : '') + (subs ? `; ${subs} sub-categor${subs > 1 ? 'ies are' : 'y is'} now main` : ''), () => {
+    toast(`Category "${goneLabel}" removed` + (k ? `, cleared from ${k} note${k > 1 ? 's' : ''}` : '') + (subs ? `; ${subs} sub-categor${subs > 1 ? 'ies are' : 'y is'} now main` : ''), () => {
       setCategories(before);
       for (const [id, theme] of themed) updateNote(id, { theme });
     });
@@ -2576,13 +2590,15 @@ settingsEl.addEventListener('change', e => {
     const term = place.closest('.cat').dataset.term, to = place.value, before = categories();
     const p = to ? findCategory(to) : null;
     if (to && (!p || catParent(p))) return;
+    const me = findCategory(term), clash = me && findChild(catName(me), p ? p.term : '');
+    if (clash && !sameTerm(clash.term, term)) { toast(`There is already a category "${catLabel(clash.term)}"`); return render(); }
     const k = p ? subsOf(p.term).length : 0;
     setCategories(before.map(c => {
       if (!sameTerm(c.term, term)) return c;
       const { parent, ...rest } = c;
       return p ? { ...rest, ...subAdj(p, k), parent: p.term } : rest;
     }));
-    toast(p ? `"${term}" moved under ${p.term}` : `"${term}" is a main category now`, () => setCategories(before));
+    toast(p ? `"${nameOf(term)}" moved under ${catName(p)}` : `"${nameOf(term)}" is a main category now`, () => setCategories(before));
     return render();
   }
   const input = e.target.closest('input[data-k]');

@@ -294,7 +294,7 @@ function renderGallery(q) {
       if (!groups.has(term.toLowerCase())) groups.set(term.toLowerCase(), [term, []]);
       groups.get(term.toLowerCase())[1].push(t);
     }
-    const sections = [...groups.values()].filter(([, ts]) => ts.length).map(([term, ts]) => [term, ts, term.toLowerCase()]);
+    const sections = [...groups.values()].filter(([, ts]) => ts.length).map(([term, ts]) => [nameOf(term), ts, term.toLowerCase()]);
     if (none.length) sections.push(['No category', none, '']);
     for (const [label, ts, key] of sections) {
       const shut = collapsed.has(key);
