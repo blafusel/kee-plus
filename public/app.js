@@ -2178,7 +2178,7 @@ navPinsBox.addEventListener('change', () => { writeLS(K.navPins, navPinsBox.chec
 applyNavPins();
 // Sidebar entries that can be switched off (per device, all on by default).
 // Their views still work (e.g. a stored view, Alt+arrows skip nothing).
-const NAV_PARTS = [['find', 'Find category field'], ['pinned', 'Pinned'], ['attachments', 'Attachments'], ['archive', 'Archive'], ['trash', 'Trash']];
+const NAV_PARTS = [['find', 'Find category field'], ['pinned', 'Pinned'], ['attachments', 'Attachments'], ['archive', 'Archive'], ['trash', 'Trash'], ['shortcuts', 'Shortcuts list']];
 function navHidden() { const v = readLS(K.navHide, []); return new Set(Array.isArray(v) ? v : []); }
 function applyNavHide() { const hid = navHidden(); for (const [id] of NAV_PARTS) document.documentElement.classList.toggle('no-nav-' + id, hid.has(id)); }
 applyNavHide();
@@ -2411,7 +2411,7 @@ const settingsEl = h('section', { class: 'settings' }, setTabBar,
   h('h2', null, 'Sidebar'),
   h('div', { class: 'set-block' },
     h('b', null, 'Show in the sidebar'),
-    h('span', { class: 'settings-hint' }, 'Notes and the categories are always there. Hiding an entry keeps its notes: archiving and deleting still work, and the notes come back when you show it again.'),
+    h('span', { class: 'settings-hint' }, 'Notes and the categories are always there. Hiding an entry keeps its notes (the shortcuts still work without their list): archiving and deleting still work, and the notes come back when you show it again.'),
     navPartsEl),
   h('div', { class: 'set-block' },
     h('b', null, 'Next to each category'),
