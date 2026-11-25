@@ -1847,6 +1847,7 @@ selbar.addEventListener('click', e => {
         for (const n of selNotes()) updateNote(n.id, p.theme ? { theme: { term: p.theme.term, seed: newThemeSeed() } } : p);
         const k = snap.length;
         toast(`${k} note${k > 1 ? 's' : ''} updated`, () => { for (const [id, old] of snap) updateNote(id, old); });
+        selected.clear(); // done: leave select mode, like archive and delete
         render();
       });
     }
@@ -2067,6 +2068,9 @@ function openPalette(anchor, cur, pick) {
   pal.style.top = y + 'px';
   const sel = palThemes.querySelector('.th.sel');
   if (sel) sel.scrollIntoView({ block: 'center' });
+  // Ready to type a new category. Not on touch screens: the keyboard would
+  // cover the list when the user only wants to pick one.
+  if (mqMouse.matches) palInput.focus({ preventScroll: true });
 }
 function closePalette() { pal.hidden = true; palPick = null; }
 
