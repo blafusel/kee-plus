@@ -1,0 +1,139 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, interactive-widget=resizes-content">
+  <title>Kee+</title>
+  <meta name="theme-color" content="#f6f5f1" media="(prefers-color-scheme: light)">
+  <meta name="theme-color" content="#141413" media="(prefers-color-scheme: dark)">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <meta name="apple-mobile-web-app-title" content="Kee+">
+  <link rel="apple-touch-icon" href="icon-180.png">
+  <link rel="icon" href="icon-32.png" sizes="32x32" type="image/png">
+  <link rel="icon" href="icon.svg" type="image/svg+xml">
+  <link rel="manifest" href="manifest.webmanifest">
+  <link rel="stylesheet" href="app.css">
+  <script src="files.js" defer></script>
+  <script src="themes.js" defer></script>
+  <script src="import.js" defer></script>
+  <script src="app.js" defer></script>
+</head>
+<body>
+  <svg width="0" height="0" style="position:absolute" aria-hidden="true">
+    <defs>
+      <symbol id="i-menu" viewBox="0 0 24 24"><path d="M4 6h16M4 12h16M4 18h16"/></symbol>
+      <symbol id="i-search" viewBox="0 0 24 24"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></symbol>
+      <symbol id="i-link" viewBox="0 0 24 24"><path d="M10 14a4 4 0 0 0 5.7 0l3-3a4 4 0 0 0-5.7-5.7l-1 1"/><path d="M14 10a4 4 0 0 0-5.7 0l-3 3a4 4 0 0 0 5.7 5.7l1-1"/></symbol>
+      <symbol id="i-pencil" viewBox="0 0 24 24"><path d="M4 20h4L19 9a2.8 2.8 0 0 0-4-4L4 16v4z"/><path d="m13.5 6.5 4 4"/></symbol>
+      <symbol id="i-x" viewBox="0 0 24 24"><path d="M6 6l12 12M18 6 6 18"/></symbol>
+      <symbol id="i-plus" viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></symbol>
+      <symbol id="i-check" viewBox="0 0 24 24"><rect x="3" y="3" width="18" height="18" rx="4"/><path d="m8 12 3 3 5-6"/></symbol>
+      <symbol id="i-text" viewBox="0 0 24 24"><path d="M4 6h16M4 12h16M4 18h10"/></symbol>
+      <symbol id="i-pin" viewBox="0 0 24 24"><path d="M12 17v5"/><path d="M9 10.8a2 2 0 0 1-1.1 1.8l-1.8.9A2 2 0 0 0 5 15.2V17h14v-1.8a2 2 0 0 0-1.1-1.8l-1.8-.9a2 2 0 0 1-1.1-1.8V7a1 1 0 0 1 1-1 2 2 0 0 0 0-4H8a2 2 0 0 0 0 4 1 1 0 0 1 1 1z"/></symbol>
+      <symbol id="i-pin-fill" viewBox="0 0 24 24"><path d="M12 17v5"/><path fill="currentColor" d="M9 10.8a2 2 0 0 1-1.1 1.8l-1.8.9A2 2 0 0 0 5 15.2V17h14v-1.8a2 2 0 0 0-1.1-1.8l-1.8-.9a2 2 0 0 1-1.1-1.8V7a1 1 0 0 1 1-1 2 2 0 0 0 0-4H8a2 2 0 0 0 0 4 1 1 0 0 1 1 1z"/></symbol>
+      <symbol id="i-palette" viewBox="0 0 24 24"><path d="M12 3a9 9 0 1 0 0 18c.9 0 1.5-.7 1.5-1.5 0-.4-.2-.8-.4-1.1-.3-.3-.4-.6-.4-1 0-.8.7-1.4 1.5-1.4H16a5 5 0 0 0 5-5C21 6.6 17 3 12 3z"/><circle cx="7.5" cy="11" r="1" fill="currentColor"/><circle cx="10.5" cy="7.5" r="1" fill="currentColor"/><circle cx="15.5" cy="8" r="1" fill="currentColor"/></symbol>
+      <symbol id="i-archive" viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="4" rx="1"/><path d="M5 8v10a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8M10 12h4"/></symbol>
+      <symbol id="i-unarchive" viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="4" rx="1"/><path d="M5 8v10a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8M12 17v-5M9.5 14.5 12 12l2.5 2.5"/></symbol>
+      <symbol id="i-trash" viewBox="0 0 24 24"><path d="M4 7h16M10 11v6M14 11v6M6 7l1 12a2 2 0 0 0 2 2h6a2 2 0 0 0 2-2l1-12M9 7V4h6v3"/></symbol>
+      <symbol id="i-restore" viewBox="0 0 24 24"><path d="M3 12a9 9 0 1 0 2.6-6.4L3 8"/><path d="M3 3v5h5"/></symbol>
+      <symbol id="i-purge" viewBox="0 0 24 24"><path d="M4 7h16M6 7l1 12a2 2 0 0 0 2 2h6a2 2 0 0 0 2-2l1-12M9 7V4h6v3M10 11l4 5M14 11l-4 5"/></symbol>
+      <symbol id="i-back" viewBox="0 0 24 24"><path d="M19 12H5M12 19l-7-7 7-7"/></symbol>
+      <symbol id="i-bulb" viewBox="0 0 24 24"><path d="M9 18h6M10 22h4M12 2a7 7 0 0 0-4 12.7c.6.5 1 1.3 1 2.1V17h6v-.2c0-.8.4-1.6 1-2.1A7 7 0 0 0 12 2z"/></symbol>
+      <symbol id="i-clip" viewBox="0 0 24 24"><path d="m21 11.5-8.6 8.6a5.3 5.3 0 0 1-7.5-7.5l8.6-8.6a3.5 3.5 0 0 1 5 5l-8.6 8.6a1.8 1.8 0 0 1-2.5-2.5l7.9-7.9"/></symbol>
+      <symbol id="i-gear" viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.8-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-1.1-1.5 1.7 1.7 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.8 1.7 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.5-1.1 1.7 1.7 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.8.3H9a1.7 1.7 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.8V9a1.7 1.7 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1z"/></symbol>
+      <symbol id="i-import" viewBox="0 0 24 24"><path d="M12 3v12M7 10l5 5 5-5"/><path d="M5 15v4a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2v-4"/></symbol>
+      <symbol id="i-tick" viewBox="0 0 24 24"><path d="m5 12.5 4.5 4.5L19 7.5"/></symbol>
+      <symbol id="i-sort" viewBox="0 0 24 24"><path d="M4 6h10M4 12h7M4 18h4M17 5v14M14 16l3 3 3-3"/></symbol>
+      <symbol id="i-chev" viewBox="0 0 24 24"><path d="M6 9l6 6 6-6"/></symbol>
+      <symbol id="i-chev-up" viewBox="0 0 24 24"><path d="M6 15l6-6 6 6"/></symbol>
+      <symbol id="i-zoom" viewBox="0 0 24 24"><rect x="3" y="3" width="7" height="7" rx="1.5"/><rect x="14" y="3" width="7" height="7" rx="1.5"/><rect x="3" y="14" width="7" height="7" rx="1.5"/><rect x="14" y="14" width="7" height="7" rx="1.5"/></symbol>
+      <symbol id="i-file" viewBox="0 0 24 24"><path d="M14 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8z"/><path d="M14 3v5h5M9 13h6M9 17h4"/></symbol>
+    </defs>
+  </svg>
+
+  <header class="topbar">
+    <button class="icon-btn" id="menuBtn" type="button" aria-label="Menu" title="Menu"><svg class="ic"><use href="#i-menu"/></svg></button>
+    <div class="brand" id="brand" role="button" tabindex="0" title="Notes" aria-label="Go to Notes"><img src="icon.svg" alt="" width="28" height="28"><span id="viewTitle">Kee+</span></div>
+    <label class="search">
+      <svg class="ic"><use href="#i-search"/></svg>
+      <span class="search-chip" id="searchChip" hidden><span class="nav-dot" id="searchChipDot"></span><span id="searchChipText"></span><button class="search-chip-x" id="searchChipX" type="button" aria-label="Search all notes" title="Search all notes"><svg class="ic"><use href="#i-x"/></svg></button></span>
+      <input id="search" type="search" placeholder="Search" autocomplete="off" enterkeyhint="search">
+      <button class="icon-btn" id="clearSearch" type="button" aria-label="Clear search" hidden><svg class="ic"><use href="#i-x"/></svg></button>
+    </label>
+    <button class="icon-btn" id="sortBtn" type="button" aria-haspopup="menu" aria-expanded="false" aria-label="Sort" title="Sort"><svg class="ic"><use href="#i-sort"/></svg></button>
+    <button class="icon-btn" id="zoomBtn" type="button" aria-haspopup="dialog" aria-expanded="false" aria-label="Zoom" title="Zoom"><svg class="ic"><use href="#i-zoom"/></svg></button>
+    <span id="sync" class="sync" data-state="ok" title="Synced"></span>
+    <button class="icon-btn" id="settingsBtn" type="button" aria-label="Settings" title="Settings"><svg class="ic"><use href="#i-gear"/></svg></button>
+  </header>
+
+  <div id="selbar" class="selbar" role="toolbar" aria-label="Selected notes" hidden>
+    <span id="selCount" class="sel-count"></span>
+    <span class="sel-actions">
+      <button class="sel-btn not-trash" type="button" data-sa="pin" title="Pin"><svg class="ic"><use href="#i-pin"/></svg><span>Pin</span></button>
+      <button class="sel-btn not-trash" type="button" data-sa="color" data-act="color" title="Category"><svg class="ic"><use href="#i-palette"/></svg><span>Category</span></button>
+      <button class="sel-btn not-trash" type="button" data-sa="archive" title="Archive"><svg class="ic"><use href="#i-archive"/></svg><span>Archive</span></button>
+      <button class="sel-btn not-trash" type="button" data-sa="trash" title="Delete"><svg class="ic"><use href="#i-trash"/></svg><span>Delete</span></button>
+      <button class="sel-btn trash-only" type="button" data-sa="restore" title="Restore"><svg class="ic"><use href="#i-restore"/></svg><span>Restore</span></button>
+      <button class="sel-btn trash-only" type="button" data-sa="purge" title="Delete forever"><svg class="ic"><use href="#i-purge"/></svg><span>Delete forever</span></button>
+    </span>
+    <button class="sel-exit" type="button" data-sa="clear" title="Exit select mode (Esc)"><svg class="ic"><use href="#i-x"/></svg><span>Exit select mode</span></button>
+  </div>
+
+  <nav id="sidebar" class="sidebar" aria-label="Views">
+    <button class="nav-item" type="button" data-view="notes"><svg class="ic"><use href="#i-bulb"/></svg><span>Notes</span></button>
+    <div id="navCats" class="nav-cats"></div>
+    <button class="nav-item" type="button" data-view="attachments"><svg class="ic"><use href="#i-clip"/></svg><span>Attachments</span></button>
+    <button class="nav-item" type="button" data-view="archive"><svg class="ic"><use href="#i-archive"/></svg><span>Archive</span></button>
+    <button class="nav-item" type="button" data-view="trash"><svg class="ic"><use href="#i-trash"/></svg><span>Trash</span></button>
+    <div class="nav-hint" aria-label="Keyboard shortcuts">
+      <p class="nav-hint-h">Shortcuts</p>
+      <dl>
+        <dt><kbd>A</kbd></dt><dd>All notes</dd>
+        <dt><kbd>C</kbd></dt><dd>New note</dd>
+        <dt><kbd>L</kbd></dt><dd>New list</dd>
+        <dt><kbd>/</kbd></dt><dd>Search</dd>
+        <dt><kbd>1</kbd>–<kbd>0</kbd></dt><dd>Category</dd>
+        <dt class="alt-nav-key"><kbd>Alt</kbd> <kbd>↑</kbd><kbd>↓</kbd></dt><dd class="alt-nav-key">Previous / next category</dd>
+        <dt><kbd>Ctrl</kbd> <kbd>Enter</kbd></dt><dd>Save &amp; next note</dd>
+        <dt><kbd>Esc</kbd></dt><dd>Close / exit select</dd>
+      </dl>
+      <p>Paste or drop files to attach.</p>
+    </div>
+  </nav>
+  <div id="scrim" class="scrim" hidden></div>
+
+  <main id="main">
+    <section id="composer" class="editor composer collapsed" aria-label="New note"></section>
+    <div id="trashBar" class="trash-bar" hidden>Notes in Trash are deleted after 7 days. <button id="emptyTrash" class="text-btn" type="button">Empty Trash</button></div>
+    <div id="board"></div>
+    <div id="empty" class="empty" hidden><svg class="ic"><use href="#i-bulb"/></svg><p></p></div>
+  </main>
+
+  <div class="bottombar" id="bottombar">
+    <button class="icon-btn" id="mNewList" type="button" aria-label="New list"><svg class="ic"><use href="#i-check"/></svg></button>
+    <button class="icon-btn" id="mAttach" type="button" aria-label="Attach file"><svg class="ic"><use href="#i-clip"/></svg></button>
+    <button class="bottom-take" id="mNewText" type="button">Take a note…</button>
+    <button class="fab" id="fab" type="button" aria-label="New note"><svg class="ic"><use href="#i-plus"/></svg></button>
+  </div>
+
+  <div id="modal" class="modal" hidden>
+    <div class="modal-scrim" id="modalScrim"></div>
+    <section id="modalEditor" class="editor" role="dialog" aria-modal="true" aria-label="Edit note"></section>
+  </div>
+
+  <div id="viewer" class="viewer" role="dialog" aria-modal="true" aria-label="Image" hidden>
+    <img id="viewerImg" alt="">
+    <button class="icon-btn vw-btn vw-back" id="viewerBack" type="button" aria-label="Back to note" title="Back"><svg class="ic"><use href="#i-back"/></svg></button>
+    <button class="icon-btn vw-btn vw-close" id="viewerClose" type="button" aria-label="Close note" title="Close"><svg class="ic"><use href="#i-x"/></svg></button>
+  </div>
+
+  <div id="palette" class="palette" hidden></div>
+  <div id="sortMenu" class="menu" role="menu" aria-label="Sort" hidden></div>
+  <div id="zoomMenu" class="menu" role="dialog" aria-label="Zoom" hidden></div>
+  <div id="ver" class="ver" aria-hidden="true"></div>
+  <div id="ptr" class="ptr" aria-hidden="true" hidden><svg class="ic"><use href="#i-restore"/></svg></div>
+  <div id="toast" class="toast" role="status" hidden><span></span><button type="button">Undo</button></div>
+</body>
+</html>
