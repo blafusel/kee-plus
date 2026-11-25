@@ -11,7 +11,7 @@
 
 // ---------------------------------------------------------------- store
 
-const K = { notes: 'mn.notes', rev: 'mn.rev', dirty: 'mn.dirty', view: 'mn.view', mini: 'mn.mini', sort: 'mn.sort', group: 'mn.group', collapsed: 'mn.collapsed', cardW: 'mn.cardW', cols: 'mn.cols', searchBottom: 'mn.searchBottom', catChip: 'mn.catChip', titleFirst: 'mn.titleFirst', navKeys: 'mn.navKeys', navShow: 'mn.navShow', setTab: 'mn.setTab', navOpen: 'mn.navOpen', toast: 'mn.toast', hideEmpty: 'mn.hideEmpty', catSort: 'mn.catSort', catGroup: 'mn.catGroup', textSize: 'mn.textSize', navSpace: 'mn.navSpace', altNav: 'mn.altNav', sideW: 'mn.sideW' };
+const K = { notes: 'mn.notes', rev: 'mn.rev', dirty: 'mn.dirty', view: 'mn.view', mini: 'mn.mini', sort: 'mn.sort', group: 'mn.group', collapsed: 'mn.collapsed', cardW: 'mn.cardW', cols: 'mn.cols', searchBottom: 'mn.searchBottom', catChip: 'mn.catChip', titleFirst: 'mn.titleFirst', navKeys: 'mn.navKeys', navShow: 'mn.navShow', setTab: 'mn.setTab', navOpen: 'mn.navOpen', toast: 'mn.toast', hideEmpty: 'mn.hideEmpty', catSort: 'mn.catSort', catGroup: 'mn.catGroup', textSize: 'mn.textSize', navSpace: 'mn.navSpace', altNav: 'mn.altNav', sideW: 'mn.sideW', navPins: 'mn.navPins', navHide: 'mn.navHide' };
 const TRASH_DAYS = 7;
 const SETTINGS_ID = 'settings'; // one synced record, not a note: { kind: 'settings', categories }
 const COLORS = ['default', 'red', 'orange', 'yellow', 'green', 'teal', 'blue', 'indigo', 'purple', 'pink', 'brown', 'gray'];
@@ -934,7 +934,7 @@ const modalEd = new Editor($('#modalEditor'), 'modal');
 let view = readLS(K.view, 'notes');
 // (A stored 'color:<name>' view from before colours were dropped falls back to Notes.)
 if (view === 'import') { view = 'settings'; writeLS(K.setTab, 'import'); } // Import is a Settings tab now
-if (!['notes', 'attachments', 'archive', 'trash', 'settings'].includes(view) && !String(view).startsWith('cat:')) view = 'notes';
+if (!['notes', 'pinned', 'attachments', 'archive', 'trash', 'settings'].includes(view) && !String(view).startsWith('cat:')) view = 'notes';
 const viewCat = () => (view.startsWith('cat:') ? view.slice(4) : null);
 const colorName = c => {
   const u = userColors()[c];
@@ -974,6 +974,20 @@ function draftTheme() {
 // Sidebar entries for the categories, rebuilt only when the list changes.
 const navCats = $('#navCats');
 let navCatsKey = '';
+// Sidebar "Find category" field (per page, not saved).
+let navFind = '';
+const navFindBox = document.getElementById('navFind'), navFindInput = document.getElementById('navFindInput'), navFindX = document.getElementById('navFindX');
+function setNavFind(v) { navFind = v; navFindInput.value = v; navFindX.hidden = !v; navCatsKey = ''; renderNavCats(); }
+navFindInput.addEventListener('input', () => { navFind = navFindInput.value; navFindX.hidden = !navFind; navCatsKey = ''; renderNavCats(); });
+navFindInput.addEventListener('keydown', e => {
+  if (e.key === 'Escape') { e.preventDefault(); e.stopPropagation(); if (navFind) setNavFind(''); else navFindInput.blur(); }
+  else if (e.key === 'Enter') { // open the first match
+    e.preventDefault();
+    const first = navCats.querySelector('[data-view^="cat:"]');
+    if (first && navFind) { setView(first.dataset.view); setNavFind(''); navFindInput.blur(); }
+  } else if (e.key === 'ArrowDown') { const first = navCats.querySelector('.nav-item'); if (first) { e.preventDefault(); first.focus(); } }
+});
+navFindX.addEventListener('click', () => { setNavFind(''); navFindInput.focus(); });
 let navCounts = new Map(); // live notes per category (lower-cased term), from renderNavCats()
 // A main category with subs gets a fold button; open ones are kept per
 // device (mn.navOpen, lower-cased terms). Viewing a sub keeps its parent open.
@@ -984,22 +998,28 @@ function renderNavCats() {
   const cats = orderedCats();
   const cur = viewCat(), curMain = cur !== null && catParent(findCategory(cur)) ? mainTerm(cur).toLowerCase() : '';
   // Notes per category (live notes; a main category counts its subs too).
-  const own = new Map();
+  const own = new Map(), ownPin = new Map();
   for (const n of notes.values()) {
     if (n.deleted || n.archived || n.trashed || !n.theme || !n.theme.term || isSettings(n)) continue;
     const t = n.theme.term.toLowerCase();
     own.set(t, (own.get(t) || 0) + 1);
+    if (n.pinned) ownPin.set(t, (ownPin.get(t) || 0) + 1);
   }
-  const counts = new Map();
+  const counts = new Map(), pins = new Map(); // pins: pinned notes, counted the same way
   for (const c of cats) {
     const t = c.term.toLowerCase(), p = catParent(c);
-    counts.set(t, (counts.get(t) || 0) + (own.get(t) || 0));
-    if (p) counts.set(p.term.toLowerCase(), (counts.get(p.term.toLowerCase()) || 0) + (own.get(t) || 0));
+    for (const [m, o] of [[counts, own], [pins, ownPin]]) {
+      m.set(t, (m.get(t) || 0) + (o.get(t) || 0));
+      if (p) m.set(p.term.toLowerCase(), (m.get(p.term.toLowerCase()) || 0) + (o.get(t) || 0));
+    }
   }
   // The category being viewed (and its main) stays shown even when empty.
   const keep = cur !== null && findCategory(cur) ? mainTerm(cur).toLowerCase() : '';
   navCounts = counts;
-  const key = JSON.stringify([cats, [...navOpen], [...dragOpen], curMain, keep, [...counts]]);
+  const allPinned = [...notes.values()].filter(n => n.pinned && !n.deleted && !n.archived && !n.trashed && !isSettings(n)).length;
+  const pc = document.getElementById('navPinnedCount');
+  if (pc.textContent !== String(allPinned)) pc.textContent = String(allPinned);
+  const key = JSON.stringify([cats, [...navOpen], [...dragOpen], curMain, keep, [...counts], [...pins], navFind, !!dragIds]);
   if (key === navCatsKey) return;
   navCatsKey = key;
   navKeyMap = catKeys(cats);
@@ -1007,27 +1027,41 @@ function renderNavCats() {
   const entry = (term, sub) => {
     const dot = h('span', { class: 'nav-dot' });
     paint(dot, { term, seed: 0 });
-    const k = byTerm.get(term), label = catLabel(term), n = counts.get(term.toLowerCase()) || 0;
-    const tip = `${label}: ${n} note${n === 1 ? '' : 's'}` + (k ? ` · shortcut ${k.toUpperCase()}` : '');
+    const k = byTerm.get(term), label = catLabel(term), n = counts.get(term.toLowerCase()) || 0, pn = pins.get(term.toLowerCase()) || 0;
+    const tip = `${label}: ${n} note${n === 1 ? '' : 's'}` + (pn ? `, ${pn} pinned` : '') + (k ? ` · shortcut ${k.toUpperCase()}` : '');
     const cls = (n ? '' : ' nav-empty') + (term.toLowerCase() === keep ? ' nav-keep' : '');
     return h('button', { class: 'nav-item' + (sub ? ' nav-sub' : '') + cls, type: 'button', dataset: { view: 'cat:' + term }, title: tip },
       dot, h('span', { class: 'nav-name' }, nameOf(term)),
       h('span', { class: 'nav-meta' }, // count and key share one tight slot
-        h('span', { class: 'nav-count', 'aria-label': `${n} note${n === 1 ? '' : 's'}` }, String(n)),
+        h('span', { class: 'nav-count', 'aria-label': `${n} note${n === 1 ? '' : 's'}` + (pn ? `, ${pn} pinned` : '') }, String(n),
+          pn ? h('span', { class: 'nav-pins' }, ` (${pn})`) : null),
         k ? h('kbd', { class: 'nav-key', title: 'Shortcut key', 'aria-hidden': 'true' }, k.toUpperCase()) : null));
   };
   const items = [];
+  // Find field: a main shows when its name or one of its subs' names matches;
+  // matching subs show under it, folded or not.
+  const f = navFind.trim().toLowerCase(), hit = c => catName(c).toLowerCase().includes(f);
+  navCats.classList.toggle('filtering', !!f);
   for (const c of cats) {
     if (catParent(c)) continue;
-    const subs = cats.filter(x => { const p = catParent(x); return !!p && sameTerm(p.term, c.term); });
+    let subs = cats.filter(x => { const p = catParent(x); return !!p && sameTerm(p.term, c.term); });
+    if (f) {
+      const subHits = subs.filter(hit);
+      if (!hit(c) && !subHits.length) continue;
+      if (subHits.length) { items.push(h('div', { class: 'nav-row' }, entry(c.term, false))); for (const s of subHits) items.push(entry(s.term, true)); }
+      else items.push(entry(c.term, false));
+      continue;
+    }
     if (!subs.length) { items.push(entry(c.term, false)); continue; }
-    const lc = c.term.toLowerCase(), open = navOpen.has(lc) || curMain === lc || dragOpen.has(lc);
+    const lc = c.term.toLowerCase(), open = navOpen.has(lc) || curMain === lc || dragOpen.has(lc) || !!dragIds;
     const fold = h('button', { class: 'nav-fold' + (open ? ' open' : ''), type: 'button', dataset: { fold: c.term }, 'aria-expanded': String(open),
       'aria-label': (open ? 'Hide' : 'Show') + ' sub-categories of ' + catName(c), title: open ? 'Hide sub-categories' : `Show ${subs.length} sub-categor${subs.length > 1 ? 'ies' : 'y'}` }, icon('chev'));
     items.push(h('div', { class: 'nav-row' + (counts.get(lc) ? '' : ' nav-empty') + (lc === keep ? ' nav-keep' : '') }, entry(c.term, false), fold));
     if (open) for (const s of subs) items.push(entry(s.term, true));
   }
+  if (f && !items.length) items.push(h('p', { class: 'nav-none' }, 'No category matches'));
   navCats.replaceChildren(...items);
+  navFindBox.hidden = !cats.length;
 }
 navCats.addEventListener('click', e => {
   const f = e.target.closest('[data-fold]');
@@ -1124,6 +1158,7 @@ function render() {
     // in the global search); elsewhere search every note outside Trash.
     if (q) { if (n.trashed || !matches(n, q) || (cat && !inCat(n))) continue; }
     else if (view === 'notes') { if (n.archived || n.trashed) continue; }
+    else if (view === 'pinned') { if (!n.pinned || n.archived || n.trashed) continue; } // every category, and none
     else if (cat) { if (n.archived || n.trashed || !inCat(n)) continue; }
     else if (view === 'archive') { if (!n.archived || n.trashed) continue; }
     else if (!n.trashed) continue;
@@ -1182,9 +1217,9 @@ function render() {
   emptyEl.hidden = list.length > 0;
   $('p', emptyEl).textContent = q ? (cat ? `No matching notes in "${catLabel(cat)}"` : 'No matching notes')
     : cat ? `Notes in "${catLabel(cat)}" appear here`
-    : { notes: 'Notes you add appear here', settings: '', archive: 'Your archived notes appear here', trash: 'No notes in Trash' }[view];
+    : { notes: 'Notes you add appear here', pinned: 'Pinned notes from every category appear here', settings: '', archive: 'Your archived notes appear here', trash: 'No notes in Trash' }[view];
 
-  $('#viewTitle').textContent = cat !== null ? catLabel(cat) : { notes: 'Kee+', settings: 'Kee+', archive: 'Archive', trash: 'Trash' }[view];
+  $('#viewTitle').textContent = cat !== null ? catLabel(cat) : { notes: 'Kee+', pinned: 'Pinned', settings: 'Kee+', archive: 'Archive', trash: 'Trash' }[view];
   for (const b of document.querySelectorAll('#sidebar [data-view]')) b.classList.toggle('active', b.dataset.view === view);
   composer.root.hidden = !(view === 'notes' || cat) || !!q;
   $('#trashBar').hidden = view !== 'trash' || !!q || trashCount === 0;
@@ -1733,6 +1768,9 @@ board.addEventListener('dragstart', e => {
   e.dataTransfer.setData(NOTE_DRAG, dragIds.join(','));
   e.dataTransfer.effectAllowed = 'move';
   document.body.classList.add('note-drag');
+  // Every category is a drop target: show the hidden empty ones (CSS) and
+  // every main's subs. Deferred: changing the DOM in dragstart can cancel the drag.
+  setTimeout(() => { if (dragIds) { navCatsKey = ''; renderNavCats(); } }, 0);
 });
 // The drop re-renders the grid, and a detached card's dragend never reaches
 // the board, so the drop cleans up too.
@@ -1741,7 +1779,8 @@ function endNoteDrag() {
   document.body.classList.remove('note-drag');
   for (const t of navCats.querySelectorAll('.drop')) t.classList.remove('drop');
   springAt('');
-  if (dragOpen.size) { dragOpen.clear(); navCatsKey = ''; renderNavCats(); } // fold back what the drag opened
+  dragOpen.clear();
+  navCatsKey = ''; renderNavCats(); // fold back what the drag opened
 }
 // Holding dragged notes over a closed main category with subs opens it after
 // a moment, so they can be dropped on a sub-category.
@@ -2131,6 +2170,29 @@ navShowSeg.addEventListener('change', e => { if (NAV_SHOW[e.target.value]) { wri
 applyNavShow();
 // Empty categories (no notes outside Archive and Trash) are faded; this hides
 // them. They show again while notes are dragged, so they can take a drop.
+// Pinned notes in brackets after the note count, "5 (2)" (per device, default on).
+const navPinsBox = h('input', { type: 'checkbox', class: 'set-check' });
+function applyNavPins() { document.documentElement.classList.toggle('nav-pins-on', readLS(K.navPins, true) !== false); }
+navPinsBox.checked = readLS(K.navPins, true) !== false;
+navPinsBox.addEventListener('change', () => { writeLS(K.navPins, navPinsBox.checked); applyNavPins(); });
+applyNavPins();
+// Sidebar entries that can be switched off (per device, all on by default).
+// Their views still work (e.g. a stored view, Alt+arrows skip nothing).
+const NAV_PARTS = [['find', 'Find category field'], ['pinned', 'Pinned'], ['attachments', 'Attachments'], ['archive', 'Archive'], ['trash', 'Trash']];
+function navHidden() { const v = readLS(K.navHide, []); return new Set(Array.isArray(v) ? v : []); }
+function applyNavHide() { const hid = navHidden(); for (const [id] of NAV_PARTS) document.documentElement.classList.toggle('no-nav-' + id, hid.has(id)); }
+applyNavHide();
+const navPartsEl = h('div', { class: 'set-checks' }, NAV_PARTS.map(([id, label]) => {
+  const box = h('input', { type: 'checkbox', class: 'set-check', dataset: { part: id } });
+  box.checked = !navHidden().has(id);
+  box.addEventListener('change', () => {
+    const hid = navHidden();
+    if (box.checked) hid.delete(id); else hid.add(id);
+    writeLS(K.navHide, [...hid]);
+    applyNavHide();
+  });
+  return h('label', { class: 'set-check-row' }, box, h('span', null, label));
+}));
 const hideEmptyBox = h('input', { type: 'checkbox', class: 'set-check' });
 function applyHideEmpty() { document.documentElement.classList.toggle('hide-empty', readLS(K.hideEmpty, true) !== false); }
 hideEmptyBox.checked = readLS(K.hideEmpty, true) !== false;
@@ -2172,10 +2234,10 @@ altNavBox.checked = altNav;
 altNavBox.addEventListener('change', () => { altNav = altNavBox.checked; writeLS(K.altNav, altNav); applyAltNav(); });
 function stepCategory(dir) {
   const hide = document.documentElement.classList.contains('hide-empty'), cur = viewCat();
-  const seq = ['notes', ...orderedCats()
+  const seq = ['notes', ...(navHidden().has('pinned') ? [] : ['pinned']), ...orderedCats()
     .filter(c => !hide || navCounts.get(c.term.toLowerCase()) || (cur !== null && sameTerm(cur, c.term)))
     .map(c => 'cat:' + c.term)];
-  const i = Math.max(0, cur !== null ? seq.findIndex(v => v !== 'notes' && sameTerm(v.slice(4), cur)) : seq.indexOf(view));
+  const i = Math.max(0, cur !== null ? seq.findIndex(v => v.startsWith('cat:') && sameTerm(v.slice(4), cur)) : seq.indexOf(view));
   const next = seq[i + dir];
   if (next && next !== view) setView(next);
 }
@@ -2338,29 +2400,38 @@ const setPane = (id, ...kids) => h('div', { class: 'set-pane', role: 'tabpanel',
 
 const settingsEl = h('section', { class: 'settings' }, setTabBar,
   setPane('general',
-  h('h2', null, 'Layout'),
-  h('label', { class: 'set-row' }, searchBottomBox,
-    h('span', null, h('b', null, 'Search bar at the bottom on phones'), h('span', { class: 'settings-hint' }, 'Easier to reach with a thumb. Saved on this device only.'))),
+  h('p', { class: 'settings-hint set-note' }, 'Everything on this tab is saved on this device only.'),
+  h('h2', null, 'Notes and search'),
   h('label', { class: 'set-row' }, titleFirstBox,
-    h('span', null, h('b', null, 'Start new notes with the title'), h('span', { class: 'settings-hint' }, 'Typing in a new note goes to the title first; Enter moves on to the note. Off: straight into the note. Saved on this device only.'))),
+    h('span', null, h('b', null, 'Start new notes with the title'), h('span', { class: 'settings-hint' }, 'Typing in a new note goes to the title first; Enter moves on to the note. Off: straight into the note.'))),
+  h('label', { class: 'set-row' }, catChipBox,
+    h('span', null, h('b', null, 'Show the category in the search box'), h('span', { class: 'settings-hint' }, 'In a category, the search box shows it and searches only its notes; its × searches all notes.'))),
+  h('label', { class: 'set-row' }, searchBottomBox,
+    h('span', null, h('b', null, 'Search bar at the bottom on phones'), h('span', { class: 'settings-hint' }, 'Easier to reach with a thumb.'))),
+  h('h2', null, 'Sidebar'),
   h('div', { class: 'set-block' },
-    h('b', null, 'Sidebar categories show'),
-    h('span', { class: 'settings-hint' }, 'Shortcut keys are boxed letters like ', h('kbd', { class: 'nav-key nav-key-demo' }, 'T'), ': press 1–9 and 0 for the first ten main categories, then the letter shown. They work either way and don\u2019t show on touch screens. Note counts are plain numbers like ', h('span', { class: 'nav-count nav-count-demo' }, '12'), ': notes outside Archive and Trash, a main category\u2019s including its sub-categories. Saved on this device only.'),
+    h('b', null, 'Show in the sidebar'),
+    h('span', { class: 'settings-hint' }, 'Notes and the categories are always there. Hiding an entry keeps its notes: archiving and deleting still work, and the notes come back when you show it again.'),
+    navPartsEl),
+  h('div', { class: 'set-block' },
+    h('b', null, 'Next to each category'),
+    h('span', { class: 'settings-hint' }, 'Shortcut keys are boxed letters like ', h('kbd', { class: 'nav-key nav-key-demo' }, 'T'), ': press 1–9 and 0 for the first ten main categories, then the letter shown. They work either way and don\u2019t show on touch screens. Note counts are plain numbers like ', h('span', { class: 'nav-count nav-count-demo' }, '12'), ': notes outside Archive and Trash, a main category\u2019s including its sub-categories.'),
     navShowSeg),
-  h('div', { class: 'set-block' },
-    h('b', null, 'Text size and spacing'),
-    h('span', { class: 'settings-hint' }, 'Text: the sidebar and note cards. Spacing: the height of each sidebar entry, so more categories fit. Saved on this device only.'),
+  h('label', { class: 'set-row' }, navPinsBox,
+    h('span', null, h('b', null, 'Show pinned notes with the note counts'), h('span', { class: 'settings-hint' }, 'Like 5 (2): five notes, two of them pinned. Shown when note counts are on.'))),
+  h('label', { class: 'set-row' }, hideEmptyBox,
+    h('span', null, h('b', null, 'Hide empty categories'), h('span', { class: 'settings-hint' }, 'Categories with no notes outside Archive and Trash. When shown, they are faded. They appear while you drag notes or find a category.'))),
+  h('h2', null, 'Size'),
+  h('div', { class: 'set-block set-block-flush' },
+    h('span', { class: 'settings-hint' }, 'Text: the sidebar and note cards. Spacing: the height of each sidebar entry, so more categories fit.'),
     h('label', { class: 'set-range' }, h('span', { class: 'seg-label' }, 'Text'), textSizeIn, textSizeVal),
     h('label', { class: 'set-range' }, h('span', { class: 'seg-label' }, 'Spacing'), navSpaceIn, navSpaceVal)),
-  h('label', { class: 'set-row' }, hideEmptyBox,
-    h('span', null, h('b', null, 'Hide empty categories in the sidebar'), h('span', { class: 'settings-hint' }, 'Categories with no notes outside Archive and Trash. When shown, they are faded. They appear while you drag notes, so you can drop on them. Saved on this device only.'))),
+  h('h2', null, 'Keyboard'),
   h('label', { class: 'set-row' }, altNavBox,
-    h('span', null, h('b', null, 'Switch categories with Alt+\u2191 / Alt+\u2193'), h('span', { class: 'settings-hint' }, 'Steps through Notes and the sidebar categories, sub-categories included, in sidebar order. Saved on this device only.'))),
-  h('label', { class: 'set-row' }, catChipBox,
-    h('span', null, h('b', null, 'Show the category in the search box'), h('span', { class: 'settings-hint' }, 'In a category, the search box shows it and searches only its notes; its × searches all notes. Saved on this device only.'))),
+    h('span', null, h('b', null, 'Switch categories with Alt+\u2191 / Alt+\u2193'), h('span', { class: 'settings-hint' }, 'Steps through Notes, Pinned and the categories, sub-categories included, in sidebar order. All shortcuts are listed at the bottom of the sidebar.'))),
   h('h2', null, 'Notifications'),
   h('label', { class: 'set-row' }, toastOnBox,
-    h('span', null, h('b', null, 'Show notifications'), h('span', { class: 'settings-hint' }, 'Messages like "Note archived" with Undo. When off, Ctrl/⌘+Z still undoes. Saved on this device only.'))),
+    h('span', null, h('b', null, 'Show notifications'), h('span', { class: 'settings-hint' }, 'Messages like "Note archived" with Undo. When off, Ctrl/⌘+Z still undoes.'))),
   h('div', { class: 'set-toast' }, toastPosSeg,
     h('label', { class: 'set-range' }, h('span', { class: 'seg-label' }, 'Show for'), toastSecs, toastSecsVal))),
   setPane('categories',
@@ -2858,6 +2929,10 @@ document.addEventListener('keydown', e => {
   if (k === 'c' || k === 'n') { e.preventDefault(); openNew('text'); }
   else if (k === 'l') { e.preventDefault(); openNew('list'); }
   else if (k === 'a' && !e.shiftKey) { e.preventDefault(); goHome(); }
+  else if (e.key === '?' || (e.shiftKey && e.code === 'Slash')) { // Shift+/: find a category in the sidebar
+    if (navFindBox.hidden || getComputedStyle(navFindBox).display === 'none') return;
+    e.preventDefault(); navFindInput.focus(); navFindInput.select();
+  }
   else if (k === '/') { e.preventDefault(); search.focus(); search.select(); }
   else if (!e.shiftKey && navKeyMap.has(k)) { e.preventDefault(); setView('cat:' + navKeyMap.get(k)); }
 });

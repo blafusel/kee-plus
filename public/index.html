@@ -83,6 +83,12 @@
 
   <nav id="sidebar" class="sidebar" aria-label="Views">
     <button class="nav-item" type="button" data-view="notes"><svg class="ic"><use href="#i-bulb"/></svg><span>Notes</span></button>
+    <div id="navFind" class="nav-find" hidden>
+      <svg class="ic"><use href="#i-search"/></svg>
+      <input id="navFindInput" type="search" placeholder="Find category" autocomplete="off" spellcheck="false" enterkeyhint="go" aria-label="Find a category">
+      <button id="navFindX" class="nav-find-x" type="button" aria-label="Clear" title="Clear (Esc)" hidden><svg class="ic"><use href="#i-x"/></svg></button>
+    </div>
+    <button class="nav-item nav-pinned" type="button" data-view="pinned" title="Pinned notes in every category"><svg class="ic"><use href="#i-pin"/></svg><span class="nav-name">Pinned</span><span class="nav-meta"><span id="navPinnedCount" class="nav-count"></span></span></button>
     <div id="navCats" class="nav-cats"></div>
     <button class="nav-item" type="button" data-view="attachments"><svg class="ic"><use href="#i-clip"/></svg><span>Attachments</span></button>
     <button class="nav-item" type="button" data-view="archive"><svg class="ic"><use href="#i-archive"/></svg><span>Archive</span></button>
@@ -94,6 +100,7 @@
         <dt><kbd>C</kbd></dt><dd>New note</dd>
         <dt><kbd>L</kbd></dt><dd>New list</dd>
         <dt><kbd>/</kbd></dt><dd>Search</dd>
+        <dt class="find-key"><kbd>Shift</kbd> <kbd>/</kbd></dt><dd class="find-key">Find category</dd>
         <dt><kbd>1</kbd>–<kbd>0</kbd></dt><dd>Category</dd>
         <dt class="alt-nav-key"><kbd>Alt</kbd> <kbd>↑</kbd><kbd>↓</kbd></dt><dd class="alt-nav-key">Previous / next category</dd>
         <dt><kbd>Ctrl</kbd> <kbd>Enter</kbd></dt><dd>Save &amp; next note</dd>
