@@ -6,6 +6,10 @@ live in each browser's localStorage, so reverting code never touches notes.
 
 ## 2026-11-26
 
+- **Note counts in Settings › Categories.** Each row shows its live notes
+  (`AI · 3 notes · 2 sub`); a main category counts its sub-categories,
+  as in the sidebar, and the tooltip splits the two. Revert: the `meta`
+  lines in `catRow()`.
 - **README: drag-and-drop GIF** (`drag-drop.gif`, scene `gifDragDrop` in
   `tools/screenshots.mjs`) replaces the search-chip still in Categories.
   `screenshots.mjs` takes GIF names after the URL to make only those.

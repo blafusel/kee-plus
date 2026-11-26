@@ -2817,12 +2817,19 @@ function catRow(cat, i, all, mains) {
   const { term } = cat, open = openCat !== null && sameTerm(openCat, term);
   const parent = catParent(cat), subs = parent ? [] : subsOf(term);
   const tiles = [catTile(term)];
+  // Live notes, as in the sidebar: a main category counts its subs too.
+  const cnt = t => navCounts.get(t.toLowerCase()) || 0, n = cnt(term);
+  const subN = subs.reduce((a, s) => a + cnt(s.term), 0);
+  const meta = [`${n} note${n === 1 ? '' : 's'}`];
+  if (subs.length) meta.push(`${subs.length} sub`);
+  const metaTitle = (subs.length ? `${n} notes: ${n - subN} in ${catName(cat)}, ${subN} in its sub-categories` : `${n} note${n === 1 ? '' : 's'}`)
+    + ' (not counting Archive and Trash)';
   const row = h('div', { class: 'cat' + (open ? ' open' : '') + (parent ? ' cat-sub' : ''), dataset: { term } },
     h('div', { class: 'cat-head' },
       h('span', { class: 'cat-grip', 'aria-hidden': 'true', title: 'Drag to reorder, or onto a main category to move it there' }, icon('grip')),
       h('button', { class: 'cat-toggle', type: 'button', 'data-toggle': '', 'aria-expanded': String(open), title: 'Colour, icon and place' },
         h('div', { class: 'cat-prev' }, tiles),
-        h('span', { class: 'cat-term' }, catName(cat), subs.length ? h('span', { class: 'cat-n' }, ` · ${subs.length} sub`) : null),
+        h('span', { class: 'cat-term' }, catName(cat), h('span', { class: 'cat-n', title: metaTitle }, ' · ' + meta.join(' · '))),
         icon('palette')),
       h('button', { class: 'icon-btn', type: 'button', 'data-rename': '', 'aria-label': 'Rename ' + term, title: 'Rename' }, icon('pencil')),
       parent ? null : h('button', { class: 'icon-btn', type: 'button', 'data-addsub': '', 'aria-label': 'Add a sub-category to ' + term, title: 'Add sub-category' }, icon('plus')),
