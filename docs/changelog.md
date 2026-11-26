@@ -6,6 +6,10 @@ live in each browser's localStorage, so reverting code never touches notes.
 
 ## 2026-11-26
 
+- **README: drag-and-drop GIF** (`drag-drop.gif`, scene `gifDragDrop` in
+  `tools/screenshots.mjs`) replaces the search-chip still in Categories.
+  `screenshots.mjs` takes GIF names after the URL to make only those.
+  Revert: restore the `search-chip-desktop.png` line and shot.
 - **Online demo on GitHub Pages.** The app runs on a static host with a
   service worker as its server, seeded with the screenshot demo notes;
   `tools/build_demo.py`, `demo/`, `.github/workflows/demo.yml`. Why: let

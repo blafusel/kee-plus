@@ -4,6 +4,7 @@
 //   MYNOTES_DB=/tmp/kee-demo/notes.db PORT=8765 python3 server.py   # other shell
 //   python3 tools/seed_demo.py http://localhost:8765
 //   node tools/screenshots.mjs http://localhost:8765
+//   node tools/screenshots.mjs http://localhost:8765 drag-drop.gif   # one GIF
 //
 // Drives `chromium --headless=new` over the DevTools protocol with Node's
 // built-in WebSocket (Node 22+); no npm packages. Each run uses a fresh
@@ -134,9 +135,6 @@ async function screenshots(cdp) {
   await setup(cdp, DESKTOP, { 'mn.navShow': 'both' });
   await evaluate(cdp, view('Travel'));
   await shot(cdp, 'category-view-desktop.png');
-  await evaluate(cdp, `search.value = 'tram'; search.dispatchEvent(new Event('input', { bubbles: true }))`);
-  await shot(cdp, 'search-chip-desktop.png');
-  await evaluate(cdp, `clearSearch()`);
   await evaluate(cdp, `setView('attachments')`);
   await shot(cdp, 'attachments-desktop.png');
 
@@ -391,6 +389,80 @@ async function gifColours(cdp) {
   r.save('colours.gif');
 }
 
+// Drag and drop: file a note by dropping it on a sidebar category, then a
+// selection of two at once. Headless Chromium draws no drag image, so the
+// scene moves a faded copy of the card with the cursor, and fires the same
+// DragEvents a real drag would (dragstart, dragover, drop, dragend).
+async function gifDragDrop(cdp) {
+  const r = recorder(cdp);
+  await setup(cdp, DESKTOP, { 'mn.group': false, 'mn.navShow': 'counts' });
+  await evaluate(cdp, `${card('App idea')}.scrollIntoView({ block: 'center' })`);
+  await settle(cdp);
+  await r.frame(6);
+  const catEntry = name => `document.querySelector('#navCats [data-view="cat:' + categories().find(c => catName(c) === ${JSON.stringify(name)}).term + '"]')`;
+  async function drag(cardExpr, targetExpr) {
+    await evaluate(cdp, CURSOR);
+    // Cards are draggable only with a mouse (pointer: fine), which headless
+    // Chromium never reports, even with media emulation.
+    const from = await evaluate(cdp, `(() => { const k = ${cardExpr}; k.draggable = true; k.scrollIntoView({ block: 'nearest' }); const b = k.getBoundingClientRect();
+      const g = k.cloneNode(true); g.id = 'demo-ghost';
+      g.style.cssText = 'position:fixed;z-index:99998;pointer-events:none;margin:0;opacity:.8;width:' + b.width + 'px;left:0;top:0;' +
+        'transform-origin:0 0;box-shadow:0 8px 24px rgba(0,0,0,.6);transition:none';
+      document.body.append(g);
+      window.__dt = new DataTransfer();
+      k.dispatchEvent(new DragEvent('dragstart', { bubbles: true, cancelable: true, dataTransfer: __dt }));
+      return { x: b.left + 40, y: b.top + 30, ox: 40, oy: 30 }; })()`);
+    await sleep(50);
+    const to = await evaluate(cdp, `(() => { const t = ${targetExpr}; const b = t.getBoundingClientRect(); return { x: b.left + 40, y: b.top + b.height / 2 }; })()`);
+    const steps = 14;
+    for (let i = 0; i <= steps; i++) {
+      const f = i / steps, e = f < .5 ? 2 * f * f : 1 - (-2 * f + 2) ** 2 / 2;
+      const x = from.x + (to.x - from.x) * e, y = from.y + (to.y - from.y) * e;
+      await evaluate(cdp, `(() => {
+        const c = document.getElementById('demo-cursor'); c.style.transition = 'none'; c.style.left = ${x} + 'px'; c.style.top = ${y} + 'px';
+        const g = document.getElementById('demo-ghost'); g.style.transform = 'translate(' + (${x} - ${from.ox} * .6) + 'px,' + (${y} - ${from.oy} * .6) + 'px) scale(.6)';
+        const el = document.elementFromPoint(${x}, ${y});
+        if (el) el.dispatchEvent(new DragEvent('dragover', { bubbles: true, cancelable: true, clientX: ${x}, clientY: ${y}, dataTransfer: __dt }));
+      })()`);
+      await r.frame();
+    }
+    await r.hold(500);
+    await evaluate(cdp, `(() => {
+      const el = document.elementFromPoint(${to.x}, ${to.y});
+      el.dispatchEvent(new DragEvent('drop', { bubbles: true, cancelable: true, clientX: ${to.x}, clientY: ${to.y}, dataTransfer: __dt }));
+      document.getElementById('demo-ghost').remove();
+      board.dispatchEvent(new DragEvent('dragend', { bubbles: true, dataTransfer: __dt }));
+      document.dispatchEvent(new DragEvent('dragend', { bubbles: true }));
+      document.getElementById('demo-cursor').style.transition = '';
+    })()`);
+    await settle(cdp);
+    await r.hold(1600);
+  }
+  // The select circle shows on hover only, which headless Chromium lacks:
+  // point the cursor at the card's corner and click the circle in the page.
+  async function select(cardExpr) {
+    await evaluate(cdp, CURSOR);
+    await evaluate(cdp, `(() => { const b = ${cardExpr}.getBoundingClientRect(); const c = document.getElementById('demo-cursor');
+      c.style.left = (b.left + 14) + 'px'; c.style.top = (b.top + 14) + 'px'; })()`);
+    await r.hold(400);
+    await evaluate(cdp, `${cardExpr}.querySelector('.c-sel').click()`);
+    await r.frame();
+  }
+  await drag(card('App idea'), catEntry('Work'));
+  // Select two notes, then drag one of them: both move.
+  await evaluate(cdp, `${card('Door code')}.scrollIntoView({ block: 'center', behavior: 'smooth' })`);
+  for (let i = 0; i < 10; i++) await r.frame();
+  await r.hold(300);
+  await select(card('Door code'));
+  await r.hold(300);
+  await select(card('Car service'));
+  await r.hold(700);
+  await drag(card('Car service'), catEntry('Family'));
+  await r.hold(800);
+  await evaluate(cdp, `syncNow()`);
+  r.save('drag-drop.gif');
+}
+
 // Keyboard: a key per category, Alt+Down steps through them, subs included.
 async function gifKeyboard(cdp) {
   const r = recorder(cdp);
@@ -430,6 +502,10 @@ async function gifKeyboard(cdp) {
 
 // Each scene changes the demo data, so they run after the screenshots, in
 // this order. Run against a freshly seeded server.
+const SCENES = { 'keyboard.gif': gifKeyboard, 'sorting.gif': gifSorting, 'drag-drop.gif': gifDragDrop,
+  'demo.gif': gifCapture, 'new-category.gif': gifNewCategory, 'colours.gif': gifColours };
+const ONLY = process.argv.slice(3); // GIF names to make; none: everything
+
 async function gifs(cdp) {
   if (spawnSync('ffmpeg', ['-version']).status !== 0) {
     console.log('ffmpeg not found: skipping the GIFs');
@@ -437,6 +513,7 @@ async function gifs(cdp) {
   }
   await gifKeyboard(cdp); // changes nothing, so first
   await gifSorting(cdp);
+  await gifDragDrop(cdp);
   await gifCapture(cdp);
   await gifNewCategory(cdp);
   await gifColours(cdp); // changes Travel's look and turns patterns on: last
@@ -455,8 +532,15 @@ try {
   const cdp = await cdpConnect(profile);
   await cdp.send('Page.enable');
   await cdp.send('Runtime.enable');
-  await screenshots(cdp);
-  await gifs(cdp);
+  if (ONLY.length) {
+    for (const name of ONLY) {
+      if (!SCENES[name]) throw new Error('Unknown scene ' + name + '; known: ' + Object.keys(SCENES).join(', '));
+      await SCENES[name](cdp);
+    }
+  } else {
+    await screenshots(cdp);
+    await gifs(cdp);
+  }
   cdp.close();
 } catch (e) {
   console.error(e.message);

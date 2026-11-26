@@ -63,7 +63,7 @@ sidebar entry to file it; one Undo puts it back.
 
 <p>
   <img src="docs/screenshots/category-view-desktop.png" width="49%" alt="The Travel category grouped by its sub-categories Hiking and Lisbon, with counts and keys in the sidebar">
-  <img src="docs/screenshots/search-chip-desktop.png" width="49%" alt="Searching inside the Travel category, shown as a chip in the search box">
+  <img src="docs/screenshots/drag-drop.gif" width="49%" alt="Dragging a note onto the Work category in the sidebar, then two selected notes onto Family">
 </p>
 
 ### A new category while you write
