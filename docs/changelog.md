@@ -4,15 +4,27 @@ Newest first. Each entry: what changed, why, and how to revert it. "Revert"
 means `git revert <commit>` unless it says otherwise. Per-device settings
 live in each browser's localStorage, so reverting code never touches notes.
 
+## 2026-11-26
+
+- **Note formatting, Markdown or rich editor** (GitHub v1.6.0). Bold, italic,
+  underline, strikethrough and two heading levels in text notes, with
+  Ctrl+B/I/U, Ctrl+Shift+X/1/2/0 and buttons in the phone editor. Stored as
+  Markdown marks in `body`, so sync, search and older clients see text.
+  Settings › General › Note editor picks rich text (default) or Markdown.
+  The sidebar shortcuts list gets a second tab with the formatting keys,
+  named after the editor in use.
+  Why: owner request. Revert: `git revert` the commit; notes keep their
+  marks as plain text.
+
 ## 2026-11-25
 
-- **New per-device defaults** (wrap-up commit). Spacing slider 60 %, the
+- **New per-device defaults** (`569bdd4`, GitHub v1.5.0). Spacing slider 60 %, the
   sidebar Shortcuts list off, "Start new notes with the title" on.
   Why: the owner's preferred setup on every new device. Only devices that
   never saved the setting change. Revert: `NAV_SPACE.def` back to 100,
   `navHidden()` fallback back to `[]`, `readLS(K.titleFirst, false) === true`
   in `public/app.js`.
-- **Pinned has its own sort** (wrap-up commit). `mn.pinSort` / `mn.pinGroup`,
+- **Pinned has its own sort** (`569bdd4`, v1.5.0). `mn.pinSort` / `mn.pinGroup`,
   starting as the Notes sort. Why: pinned notes are read differently from
   the full list. Revert: drop the `pinned` entry from `SORT_KEYS` and
   `sortScopeOf()` in `public/app.js`; the stored keys are then ignored.

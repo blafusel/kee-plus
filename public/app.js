@@ -11,7 +11,7 @@
 
 // ---------------------------------------------------------------- store
 
-const K = { notes: 'mn.notes', rev: 'mn.rev', dirty: 'mn.dirty', view: 'mn.view', mini: 'mn.mini', sort: 'mn.sort', group: 'mn.group', collapsed: 'mn.collapsed', cardW: 'mn.cardW', cols: 'mn.cols', searchBottom: 'mn.searchBottom', catChip: 'mn.catChip', titleFirst: 'mn.titleFirst', navKeys: 'mn.navKeys', navShow: 'mn.navShow', setTab: 'mn.setTab', navOpen: 'mn.navOpen', toast: 'mn.toast', hideEmpty: 'mn.hideEmpty', catSort: 'mn.catSort', catGroup: 'mn.catGroup', textSize: 'mn.textSize', navSpace: 'mn.navSpace', altNav: 'mn.altNav', sideW: 'mn.sideW', navPins: 'mn.navPins', navHide: 'mn.navHide', pinSort: 'mn.pinSort', pinGroup: 'mn.pinGroup' };
+const K = { notes: 'mn.notes', rev: 'mn.rev', dirty: 'mn.dirty', view: 'mn.view', mini: 'mn.mini', sort: 'mn.sort', group: 'mn.group', collapsed: 'mn.collapsed', cardW: 'mn.cardW', cols: 'mn.cols', searchBottom: 'mn.searchBottom', catChip: 'mn.catChip', titleFirst: 'mn.titleFirst', navKeys: 'mn.navKeys', navShow: 'mn.navShow', setTab: 'mn.setTab', navOpen: 'mn.navOpen', toast: 'mn.toast', hideEmpty: 'mn.hideEmpty', catSort: 'mn.catSort', catGroup: 'mn.catGroup', textSize: 'mn.textSize', navSpace: 'mn.navSpace', altNav: 'mn.altNav', sideW: 'mn.sideW', navPins: 'mn.navPins', navHide: 'mn.navHide', editMode: 'mn.editMode', hintTab: 'mn.hintTab', pinSort: 'mn.pinSort', pinGroup: 'mn.pinGroup' };
 const TRASH_DAYS = 7;
 const SETTINGS_ID = 'settings'; // one synced record, not a note: { kind: 'settings', categories }
 const COLORS = ['default', 'red', 'orange', 'yellow', 'green', 'teal', 'blue', 'indigo', 'purple', 'pink', 'brown', 'gray'];
@@ -447,6 +447,10 @@ const mqPhone = matchMedia('(max-width: 700px)');
 // Mouse or trackpad: cards can be dragged. Not on touch, where a long press selects.
 const mqMouse = matchMedia('(pointer: fine)');
 const isTyping = el => !!el && (el.tagName === 'TEXTAREA' || el.tagName === 'INPUT' || el.isContentEditable);
+// Note editor (per device): 'md' shows the formatting marks in a plain text
+// field, 'rich' shows the formatting. Both store the same text (format.js).
+let editMode = readLS(K.editMode, 'rich') === 'md' ? 'md' : 'rich';
+const FMT_KEYS = { b: 'bold', i: 'italic', u: 'underline' };
 
 // ---------------------------------------------------------------- editor
 
@@ -459,6 +463,7 @@ const EDITOR_HTML = `
     <div class="ed-files" hidden></div>
     <textarea class="ed-title" rows="1" placeholder="Title" enterkeyhint="next" aria-label="Title"></textarea>
     <textarea class="ed-body" rows="1" placeholder="Take a note…" aria-label="Note"></textarea>
+    <div class="ed-rich" contenteditable="true" role="textbox" aria-multiline="true" aria-label="Note" data-placeholder="Take a note…" hidden></div>
     <div class="ed-list" hidden></div>
     <div class="ed-links" hidden></div>
   </div>
@@ -467,6 +472,15 @@ const EDITOR_HTML = `
     <button class="icon-btn" type="button" data-a="quick-list" aria-label="New list" title="New list (L)"><svg class="ic"><use href="#i-check"/></svg></button>
   </div>
   <input class="ed-fileinput" type="file" accept="image/*,application/pdf" multiple hidden>
+  <div class="ed-fmt not-trash" role="toolbar" aria-label="Formatting">
+    <button class="fmt-btn" type="button" data-f="bold" aria-label="Bold" title="Bold (Ctrl+B)"><b>B</b></button>
+    <button class="fmt-btn" type="button" data-f="italic" aria-label="Italic" title="Italic (Ctrl+I)"><i>I</i></button>
+    <button class="fmt-btn" type="button" data-f="underline" aria-label="Underline" title="Underline (Ctrl+U)"><u>U</u></button>
+    <button class="fmt-btn" type="button" data-f="strike" aria-label="Strikethrough" title="Strikethrough (Ctrl+Shift+X)"><s>S</s></button>
+    <button class="fmt-btn" type="button" data-f="h1" aria-label="Heading 1" title="Heading 1 (Ctrl+Shift+1)">H1</button>
+    <button class="fmt-btn" type="button" data-f="h2" aria-label="Heading 2" title="Heading 2 (Ctrl+Shift+2)">H2</button>
+    <button class="fmt-btn" type="button" data-f="h0" aria-label="Normal text" title="Normal text (Ctrl+Shift+0)">Aa</button>
+  </div>
   <div class="ed-foot">
     <button class="icon-btn not-trash" type="button" data-a="kind" aria-label="Show checkboxes" title="Show checkboxes"><svg class="ic"><use href="#i-check"/></svg></button>
     <button class="icon-btn not-trash" type="button" data-a="attach" aria-label="Attach file" title="Attach image or file"><svg class="ic"><use href="#i-clip"/></svg></button>
@@ -489,6 +503,7 @@ class Editor {
     root.innerHTML = EDITOR_HTML;
     this.title = $('.ed-title', root);
     this.body = $('.ed-body', root);
+    this.rich = $('.ed-rich', root);
     this.list = $('.ed-list', root);
     this.edited = $('.ed-edited', root);
     this.files = $('.ed-files', root);
@@ -501,9 +516,13 @@ class Editor {
     root.addEventListener('click', e => this.onClick(e));
     root.addEventListener('change', e => this.onChange(e));
     root.addEventListener('paste', e => this.onPaste(e));
+    // Format buttons (phones) keep the focus and selection in the note.
+    $('.ed-fmt', root).addEventListener('pointerdown', e => { if (e.target.closest('.fmt-btn')) e.preventDefault(); });
   }
 
   get expanded() { return !this.root.classList.contains('collapsed'); }
+  // The body field in use: the plain text field or the rich one (setting).
+  get bodyEl() { return editMode === 'rich' ? this.rich : this.body; }
   expand() { if (this.mode === 'inline' && !this.expanded) { this.root.classList.remove('collapsed'); this.titleHint(); this.sizeAll(); } }
   // Title first (setting): the collapsed composer shows the title field, so
   // its placeholder reads like the body's until the composer opens.
@@ -536,12 +555,40 @@ class Editor {
     this.title.value = d.title;
     this.body.value = d.body;
     this.title.readOnly = this.body.readOnly = ro;
-    this.body.hidden = d.kind === 'list';
+    this.body.hidden = d.kind === 'list' || editMode === 'rich';
+    this.rich.hidden = d.kind === 'list' || editMode !== 'rich';
+    if (editMode === 'rich') this.fillRich();
+    this.rich.contentEditable = ro ? 'false' : 'true';
+    this.root.classList.toggle('is-list', d.kind === 'list');
     this.list.hidden = d.kind !== 'list';
     if (d.kind === 'list') this.renderList();
     this.root.classList.toggle('trashed', ro);
     this.chrome();
     this.renderFiles();
+  }
+
+  fillRich() {
+    this.rich.replaceChildren(...(this.d.body ? mdToRich(this.d.body) : []));
+    this.rich.classList.toggle('is-empty', !this.d.body);
+  }
+
+  // Bold, italic, ... (Ctrl+B and so on, or the format buttons on phones).
+  format(f) {
+    if (this.d.kind === 'list' || this.d.trashed) return;
+    const el = this.bodyEl;
+    if (document.activeElement !== el) this.focusMain();
+    const level = { h0: 0, h1: 1, h2: 2 }[f];
+    if (editMode === 'rich') {
+      if (level === undefined) richToggle(el, f);
+      else { richSetHeading(el, level); this.syncRich(); }
+    } else if (level === undefined) taToggleMark(el, f);
+    else taSetHeading(el, level);
+  }
+
+  syncRich() {
+    const body = richToMd(this.rich);
+    this.rich.classList.toggle('is-empty', !body);
+    if (body !== this.d.body) this.set({ body });
   }
 
   // Attachment strip: stored files plus uploads still running for this note.
@@ -626,8 +673,17 @@ class Editor {
   }
 
   focusMain(caret = 'end') {
-    const ta = this.d.kind === 'list' ? ($('.li-addtext', this.list) || this.title) : this.body;
+    const ta = this.d.kind === 'list' ? ($('.li-addtext', this.list) || this.title) : this.bodyEl;
     ta.focus();
+    if (ta === this.rich) {
+      const r = document.createRange();
+      r.selectNodeContents(ta);
+      r.collapse(caret !== 'end');
+      const sel = getSelection();
+      sel.removeAllRanges();
+      sel.addRange(r);
+      return;
+    }
     const p = caret === 'end' ? ta.value.length : 0;
     ta.setSelectionRange(p, p);
   }
@@ -725,6 +781,14 @@ class Editor {
     this.expand();
     if (t === this.title) { this.set({ title: t.value }); autosize(t); }
     else if (t === this.body) { this.set({ body: t.value }); autosize(t); }
+    else if (t === this.rich) {
+      // Enter at the end of a heading starts a normal line.
+      if (e.inputType === 'insertParagraph') {
+        const b = richBlockAt(t);
+        if (b && !b.textContent && b.className) b.removeAttribute('class');
+      }
+      this.syncRich();
+    }
     else if (t.classList.contains('li-text')) {
       const it = this.item(t.closest('.li').dataset.id);
       if (it) { it.text = t.value; this.setItems(); }
@@ -741,14 +805,22 @@ class Editor {
     if (e.key === 'Escape') { e.preventDefault(); e.stopPropagation(); return this.done(false); }
     if (e.isComposing) return;
 
+    // Formatting shortcuts in the note text: Ctrl/Cmd+B, I, U; Ctrl/Cmd+Shift+X
+    // strikethrough, +1 / +2 headings, +0 normal text.
+    if ((t === this.body || t === this.rich) && (e.ctrlKey || e.metaKey) && !e.altKey) {
+      const k = e.key.toLowerCase();
+      const f = !e.shiftKey ? FMT_KEYS[k]
+        : k === 'x' ? 'strike' : { Digit1: 'h1', Digit2: 'h2', Digit0: 'h0' }[e.code];
+      if (f) { e.preventDefault(); return this.format(f); }
+    }
+
     if (t === this.title && e.key === 'Enter' && !e.shiftKey) {
       e.preventDefault();
       if (this.d.kind === 'list') {
         const first = $('.li-text', this.list);
         first ? (first.focus(), first.setSelectionRange(0, 0)) : this.focusMain();
       } else {
-        this.body.focus();
-        this.body.setSelectionRange(0, 0);
+        this.focusMain('start');
       }
       return;
     }
@@ -824,6 +896,12 @@ class Editor {
       return;
     }
     const t = e.target;
+    // The rich field takes plain text only (its formatting comes from the note's marks).
+    if (this.rich.contains(t)) {
+      e.preventDefault();
+      document.execCommand('insertText', false, e.clipboardData.getData('text/plain'));
+      return;
+    }
     const isItem = t.classList.contains('li-text'), isAdd = t.classList.contains('li-addtext');
     if (!isItem && !isAdd) return;
     const text = e.clipboardData.getData('text');
@@ -842,6 +920,8 @@ class Editor {
   }
 
   onClick(e) {
+    const fb = e.target.closest('.fmt-btn');
+    if (fb) return this.format(fb.dataset.f);
     const btn = e.target.closest('[data-a]');
     const tile = e.target.closest('.ef');
     if (!btn && tile && tile.dataset.fid) {
@@ -854,7 +934,7 @@ class Editor {
       // "Start new notes with the title" setting picks; a click on a field
       // keeps that field.
       if (this.mode === 'inline' && !this.expanded) {
-        const onField = e.target.closest('textarea, input');
+        const onField = e.target.closest('textarea, input, .ed-rich');
         this.expand();
         if (!onField) this.focusNew();
       }
@@ -1368,7 +1448,7 @@ function card(n) {
     if (open.length > 10) el.append(h('div', { class: 'c-more' }, `+ ${open.length - 10} more`));
     if (done.length) el.append(h('div', { class: 'c-more' }, `+ ${done.length} checked item${done.length > 1 ? 's' : ''}`));
   } else if (n.body.trim()) {
-    el.append(h('div', { class: 'c-body' }, linkify(n.body)));
+    el.append(h('div', { class: 'c-body' }, mdNodes(n.body)));
   }
   if (docs.length) el.append(cardDocs(docs));
   if (!hasContent(n)) el.append(h('div', { class: 'c-empty' }, 'Empty note'));
@@ -1501,7 +1581,7 @@ board.addEventListener('keydown', e => {
 // own section; the order applies inside each section, in search and Trash too.
 const collator = new Intl.Collator(undefined, { numeric: true, sensitivity: 'base' });
 // What a title sort reads: the title, else the text, else the list items.
-const sortLabel = n => (n.title.trim() || n.body.trim() || n.items.map(i => i.text).join(' ').trim());
+const sortLabel = n => (n.title.trim() || mdPlain(n.body).trim() || n.items.map(i => i.text).join(' ').trim());
 // Untitled-and-empty notes go last in both directions.
 const byLabel = dir => (a, b) => {
   const x = sortLabel(a), y = sortLabel(b);
@@ -2140,6 +2220,46 @@ function applySearchPos() {
 }
 searchBottomBox.addEventListener('change', () => { writeLS(K.searchBottom, searchBottomBox.checked); applySearchPos(); });
 applySearchPos();
+// Note editor: Markdown (marks shown) or rich text. Same stored text.
+const editModeSeg = h('div', { class: 'seg', role: 'radiogroup', 'aria-label': 'Note editor' },
+  [['rich', 'Rich text'], ['md', 'Markdown']].map(([value, label]) =>
+    h('label', null, h('input', { type: 'radio', name: 'editMode', value, checked: value === editMode }), h('span', null, label))));
+editModeSeg.addEventListener('change', e => {
+  editMode = e.target.value === 'rich' ? 'rich' : 'md';
+  writeLS(K.editMode, editMode);
+  for (const ed of [composer, modalEd]) ed.fill();
+  renderHintFmt();
+});
+// Sidebar shortcuts: a second tab lists the formatting keys for the editor
+// in use (named after it); Markdown also shows the marks they type.
+const HINT_FMT = [
+  [['B'], 'Bold', '**bold**'], [['I'], 'Italic', '_italic_'], [['U'], 'Underline', '++underline++'],
+  [['Shift', 'X'], 'Strikethrough', '~~strike~~'], [['Shift', '1'], 'Heading 1', '# '], [['Shift', '2'], 'Heading 2', '## '],
+  [['Shift', '0'], 'Normal text', null],
+];
+function renderHintFmt() {
+  const md = editMode === 'md';
+  $('#hintTab-fmt').textContent = md ? 'Markdown' : 'Rich text';
+  $('#hintFmt').replaceChildren(
+    h('dl', null, HINT_FMT.flatMap(([keys, label, mark]) => [
+      h('dt', null, h('kbd', null, 'Ctrl'), ...keys.flatMap(k => [' ', h('kbd', null, k)])),
+      h('dd', null, label, md && mark ? [' ', h('code', { class: 'hint-mark' }, mark)] : null),
+    ])),
+    h('p', null, md ? 'Marks show in the note; cards show the formatting.' : 'Select text first, or format what you type next.'));
+}
+function showHintTab(id) {
+  for (const b of document.querySelectorAll('.nav-hint-tabs [role=tab]')) b.setAttribute('aria-selected', String(b.dataset.hint === id));
+  $('#hintKeys').hidden = id !== 'keys';
+  $('#hintFmt').hidden = id !== 'fmt';
+}
+$('.nav-hint-tabs').addEventListener('click', e => {
+  const b = e.target.closest('[data-hint]');
+  if (!b) return;
+  writeLS(K.hintTab, b.dataset.hint);
+  showHintTab(b.dataset.hint);
+});
+renderHintFmt();
+showHintTab(readLS(K.hintTab, 'keys') === 'fmt' ? 'fmt' : 'keys');
 // New notes start in the title or the body. Per device, default title.
 let titleFirst = readLS(K.titleFirst, true) !== false;
 const titleFirstBox = h('input', { type: 'checkbox', class: 'set-check' });
@@ -2408,6 +2528,10 @@ const settingsEl = h('section', { class: 'settings' }, setTabBar,
   h('h2', null, 'Notes and search'),
   h('label', { class: 'set-row' }, titleFirstBox,
     h('span', null, h('b', null, 'Start new notes with the title'), h('span', { class: 'settings-hint' }, 'Typing in a new note goes to the title first; Enter moves on to the note. Off: straight into the note.'))),
+  h('div', { class: 'set-block' },
+    h('b', null, 'Note editor'),
+    h('span', { class: 'settings-hint' }, 'Formatting: Ctrl+B bold, Ctrl+I italic, Ctrl+U underline, Ctrl+Shift+X strikethrough, Ctrl+Shift+1 or 2 heading, Ctrl+Shift+0 normal text (\u2318 on a Mac); buttons on phones. Markdown shows the marks, like **bold**; rich text shows bold as bold. Both keep the same notes.'),
+    editModeSeg),
   h('label', { class: 'set-row' }, catChipBox,
     h('span', null, h('b', null, 'Show the category in the search box'), h('span', { class: 'settings-hint' }, 'In a category, the search box shows it and searches only its notes; its × searches all notes.'))),
   h('label', { class: 'set-row' }, searchBottomBox,
@@ -3056,5 +3180,5 @@ composer.start();
 purgeOldTrash();
 render();
 composer.titleHint();
-if (!mqPhone.matches && matchMedia('(pointer: fine)').matches) (titleFirst ? composer.title : composer.body).focus();
+if (!mqPhone.matches && matchMedia('(pointer: fine)').matches) (titleFirst ? composer.title : composer.bodyEl).focus();
 sync();

@@ -244,6 +244,11 @@ html:not(.nav-pins-on) .nav-pins { display: none; }
    with a divider on top. */
 .nav-hint { position: sticky; bottom: -8px; z-index: 1; padding-bottom: 12px; background: var(--bg); border-top: 1px solid var(--border); }
 .nav-hint-h { margin: 0 0 6px; font-size: 11px; font-weight: 600; letter-spacing: .06em; text-transform: uppercase; }
+.nav-hint-tabs { display: flex; gap: 14px; margin: 0 0 6px; }
+.nav-hint-tabs .nav-hint-h { margin: 0; padding: 0 0 2px; border: 0; border-bottom: 2px solid transparent; background: none; color: var(--muted); font-family: inherit; cursor: pointer; }
+.nav-hint-tabs .nav-hint-h:hover { color: var(--text); }
+.nav-hint-tabs .nav-hint-h[aria-selected=true] { color: var(--text); border-bottom-color: currentColor; }
+.hint-mark { margin-left: 2px; padding: 0 3px; border-radius: 3px; font-size: 11px; background: color-mix(in srgb, var(--text) 8%, transparent); }
 .nav-hint dl { display: grid; grid-template-columns: auto 1fr; gap: 5px 10px; align-items: center; margin: 0 0 8px; }
 .nav-hint dt { white-space: nowrap; }
 .nav-hint dd { margin: 0; }
@@ -276,7 +281,19 @@ main {
 .ed-back { display: none; }
 .ed-scroll { padding: 14px 16px 6px; overflow-y: auto; overscroll-behavior: contain; flex: 1; }
 .ed-title { font-size: 17px !important; font-weight: 600; padding-right: 36px !important; margin-bottom: 8px !important; }
-.ed-body { font-size: 15px; min-height: 22px; }
+.ed-body, .ed-rich { font-size: 15px; min-height: 22px; }
+/* Rich note field (setting): same look as the text field. */
+.ed-rich { position: relative; outline: 0; line-height: 1.5; white-space: pre-wrap; overflow-wrap: anywhere; cursor: text; }
+.ed-rich { text-align: left; }
+.ed-rich.is-empty::before { content: attr(data-placeholder); position: absolute; top: 0; left: 0; color: var(--muted); opacity: .9; pointer-events: none; }
+/* Formatting: cards and the rich field. */
+.md-h1 { font-size: 1.35em; font-weight: 650; line-height: 1.3; }
+.md-h2 { font-size: 1.15em; font-weight: 650; line-height: 1.35; }
+.c-body b, .ed-rich b { font-weight: 650; }
+/* Format buttons: phones only (desktop uses the shortcuts). */
+.ed-fmt { display: none; }
+.fmt-btn { min-width: 40px; height: 36px; padding: 0 8px; border: 0; border-radius: 8px; background: none; color: var(--text); font: inherit; font-size: 15px; cursor: pointer; }
+.fmt-btn:active { background: var(--hover); }
 .ed-foot { display: flex; align-items: center; gap: 2px; padding: 2px 8px 8px; }
 .ed-foot .icon-btn { width: 36px; height: 36px; }
 .ed-theme {
@@ -352,10 +369,10 @@ main {
 .composer.collapsed .ed-top, .composer.collapsed .ed-title, .composer.collapsed .ed-foot { display: none; }
 .composer.collapsed .ed-scroll { padding: 13px 96px 13px 16px; cursor: text; }
 .composer.collapsed .ed-quick { display: flex; position: absolute; right: 6px; top: 50%; transform: translateY(-50%); }
-.composer.collapsed .ed-body { font-weight: 500; }
+.composer.collapsed .ed-body, .composer.collapsed .ed-rich { font-weight: 500; }
 /* Title first: the collapsed composer shows the title field instead. */
 .composer.collapsed.title-first .ed-title { display: block; font-weight: 500; }
-.composer.collapsed.title-first .ed-body, .composer.collapsed.title-first .ed-list { display: none; }
+.composer.collapsed.title-first .ed-body, .composer.collapsed.title-first .ed-rich, .composer.collapsed.title-first .ed-list { display: none; }
 .composer .ed-close { display: inline-block; }
 
 /* ---------- board ---------- */
@@ -544,7 +561,7 @@ body.selecting .card .c-tag { opacity: 1; } /* actions stay hidden while selecti
 }
 .modal .editor:not([data-color=default]), .modal .editor[data-themed] { border-color: transparent; }
 .modal .ed-title { font-size: 20px !important; }
-.modal .ed-body, .modal .li textarea { font-size: 16px; }
+.modal .ed-body, .modal .ed-rich, .modal .li textarea { font-size: 16px; }
 @keyframes fade { from { opacity: 0; } }
 @keyframes pop { from { opacity: 0; transform: translateY(8px) scale(.985); } }
 
@@ -816,6 +833,8 @@ html.no-nav-shortcuts .nav-hint { display: none !important; }
   .modal .ed-title { padding-right: 0 !important; }
   .modal .ed-foot { padding: 4px 6px calc(4px + env(safe-area-inset-bottom)); border-top: 1px solid color-mix(in srgb, var(--text) 10%, transparent); }
   .modal .ed-foot .icon-btn { width: 44px; height: 44px; }
+  .modal .editor:not(.is-list):not(.trashed) .ed-fmt { display: flex; gap: 2px; padding: 2px 6px; overflow-x: auto; border-top: 1px solid color-mix(in srgb, var(--text) 10%, transparent); }
+  .modal .fmt-btn { min-width: 44px; height: 40px; }
   .modal .ed-close { display: none; }
   .li-del { opacity: .6; }
   .toast { left: 12px; right: 12px; bottom: calc(84px + env(safe-area-inset-bottom)); }

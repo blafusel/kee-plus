@@ -15,6 +15,7 @@
   <link rel="icon" href="icon.svg" type="image/svg+xml">
   <link rel="manifest" href="manifest.webmanifest">
   <link rel="stylesheet" href="app.css">
+  <script src="format.js" defer></script>
   <script src="files.js" defer></script>
   <script src="themes.js" defer></script>
   <script src="import.js" defer></script>
@@ -94,7 +95,11 @@
     <button class="nav-item" type="button" data-view="archive"><svg class="ic"><use href="#i-archive"/></svg><span>Archive</span></button>
     <button class="nav-item" type="button" data-view="trash"><svg class="ic"><use href="#i-trash"/></svg><span>Trash</span></button>
     <div class="nav-hint" aria-label="Keyboard shortcuts">
-      <p class="nav-hint-h">Shortcuts</p>
+      <div class="nav-hint-tabs" role="tablist" aria-label="Shortcuts">
+        <button class="nav-hint-h" type="button" role="tab" id="hintTab-keys" data-hint="keys" aria-controls="hintKeys" aria-selected="true">Shortcuts</button>
+        <button class="nav-hint-h" type="button" role="tab" id="hintTab-fmt" data-hint="fmt" aria-controls="hintFmt" aria-selected="false">Rich text</button>
+      </div>
+      <div id="hintKeys" role="tabpanel" aria-labelledby="hintTab-keys">
       <dl>
         <dt><kbd>A</kbd></dt><dd>All notes</dd>
         <dt><kbd>C</kbd></dt><dd>New note</dd>
@@ -107,6 +112,8 @@
         <dt><kbd>Esc</kbd></dt><dd>Close / exit select</dd>
       </dl>
       <p>Paste or drop files to attach.</p>
+      </div>
+      <div id="hintFmt" role="tabpanel" aria-labelledby="hintTab-fmt" hidden></div>
     </div>
   </nav>
   <div id="scrim" class="scrim" hidden></div>
