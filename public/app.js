@@ -11,7 +11,7 @@
 
 // ---------------------------------------------------------------- store
 
-const K = { notes: 'mn.notes', rev: 'mn.rev', dirty: 'mn.dirty', view: 'mn.view', mini: 'mn.mini', sort: 'mn.sort', group: 'mn.group', collapsed: 'mn.collapsed', cardW: 'mn.cardW', cols: 'mn.cols', searchBottom: 'mn.searchBottom', catChip: 'mn.catChip', titleFirst: 'mn.titleFirst', navKeys: 'mn.navKeys', navShow: 'mn.navShow', setTab: 'mn.setTab', navOpen: 'mn.navOpen', toast: 'mn.toast', hideEmpty: 'mn.hideEmpty', catSort: 'mn.catSort', catGroup: 'mn.catGroup', textSize: 'mn.textSize', navSpace: 'mn.navSpace', altNav: 'mn.altNav', sideW: 'mn.sideW', navPins: 'mn.navPins', navHide: 'mn.navHide' };
+const K = { notes: 'mn.notes', rev: 'mn.rev', dirty: 'mn.dirty', view: 'mn.view', mini: 'mn.mini', sort: 'mn.sort', group: 'mn.group', collapsed: 'mn.collapsed', cardW: 'mn.cardW', cols: 'mn.cols', searchBottom: 'mn.searchBottom', catChip: 'mn.catChip', titleFirst: 'mn.titleFirst', navKeys: 'mn.navKeys', navShow: 'mn.navShow', setTab: 'mn.setTab', navOpen: 'mn.navOpen', toast: 'mn.toast', hideEmpty: 'mn.hideEmpty', catSort: 'mn.catSort', catGroup: 'mn.catGroup', textSize: 'mn.textSize', navSpace: 'mn.navSpace', altNav: 'mn.altNav', sideW: 'mn.sideW', navPins: 'mn.navPins', navHide: 'mn.navHide', pinSort: 'mn.pinSort', pinGroup: 'mn.pinGroup' };
 const TRASH_DAYS = 7;
 const SETTINGS_ID = 'settings'; // one synced record, not a note: { kind: 'settings', categories }
 const COLORS = ['default', 'red', 'orange', 'yellow', 'green', 'teal', 'blue', 'indigo', 'purple', 'pink', 'brown', 'gray'];
@@ -1520,9 +1520,9 @@ const SORTS = {
 // any sort: one section per category in Settings order, sorted inside.
 // Before it, "Category" was a sort of its own; a stored 'category' becomes
 // the default sort with grouping on.
-// Two sort settings: one for all notes (Notes, Archive, Trash, Attachments,
-// search) and one shared by every category view. Each keeps its own sort and
-// grouping; a category's starts as the all-notes one.
+// Three sort settings: one for all notes (Notes, Archive, Trash, Attachments,
+// search), one shared by every category view and one for Pinned. Each keeps
+// its own sort and grouping; the other two start as the all-notes one.
 function readSort(sortKey, groupKey, fallback) {
   let by = readLS(sortKey, fallback ? fallback.by : 'created');
   const g = readLS(groupKey, null);
@@ -1531,14 +1531,16 @@ function readSort(sortKey, groupKey, fallback) {
   if (!SORTS[by]) by = 'created';
   return { by, group };
 }
-const sortKeys = () => (viewCat() !== null ? [K.catSort, K.catGroup] : [K.sort, K.group]);
+const SORT_KEYS = { all: [K.sort, K.group], cat: [K.catSort, K.catGroup], pinned: [K.pinSort, K.pinGroup] };
+const sortScopeOf = () => (viewCat() !== null ? 'cat' : view === 'pinned' ? 'pinned' : 'all');
+const sortKeys = () => SORT_KEYS[sortScopeOf()];
 let sortBy = 'created', groupCats = true, sortScope = null, sortUiReady = false;
 function loadSort() {
-  const scope = viewCat() !== null ? 'cat' : 'all';
+  const scope = sortScopeOf();
   if (scope === sortScope) return;
   sortScope = scope;
   const all = readSort(K.sort, K.group);
-  ({ by: sortBy, group: groupCats } = scope === 'cat' ? readSort(K.catSort, K.catGroup, all) : all);
+  ({ by: sortBy, group: groupCats } = scope === 'all' ? all : readSort(...SORT_KEYS[scope], all));
   if (sortUiReady) sortBtnLabel();
 }
 loadSort();
@@ -2138,8 +2140,8 @@ function applySearchPos() {
 }
 searchBottomBox.addEventListener('change', () => { writeLS(K.searchBottom, searchBottomBox.checked); applySearchPos(); });
 applySearchPos();
-// New notes start in the title or the body. Per device, default body.
-let titleFirst = readLS(K.titleFirst, false) === true;
+// New notes start in the title or the body. Per device, default title.
+let titleFirst = readLS(K.titleFirst, true) !== false;
 const titleFirstBox = h('input', { type: 'checkbox', class: 'set-check' });
 titleFirstBox.checked = titleFirst;
 titleFirstBox.addEventListener('change', () => {
@@ -2176,10 +2178,12 @@ function applyNavPins() { document.documentElement.classList.toggle('nav-pins-on
 navPinsBox.checked = readLS(K.navPins, true) !== false;
 navPinsBox.addEventListener('change', () => { writeLS(K.navPins, navPinsBox.checked); applyNavPins(); });
 applyNavPins();
-// Sidebar entries that can be switched off (per device, all on by default).
+// Sidebar entries that can be switched off (per device; by default all on
+// except the shortcuts list).
 // Their views still work (e.g. a stored view, Alt+arrows skip nothing).
 const NAV_PARTS = [['find', 'Find category field'], ['pinned', 'Pinned'], ['attachments', 'Attachments'], ['archive', 'Archive'], ['trash', 'Trash'], ['shortcuts', 'Shortcuts list']];
-function navHidden() { const v = readLS(K.navHide, []); return new Set(Array.isArray(v) ? v : []); }
+// Unset: only the shortcuts list is off.
+function navHidden() { const v = readLS(K.navHide, ['shortcuts']); return new Set(Array.isArray(v) ? v : []); }
 function applyNavHide() { const hid = navHidden(); for (const [id] of NAV_PARTS) document.documentElement.classList.toggle('no-nav-' + id, hid.has(id)); }
 applyNavHide();
 const navPartsEl = h('div', { class: 'set-checks' }, NAV_PARTS.map(([id, label]) => {
@@ -2214,7 +2218,7 @@ textSizeIn.value = String(textPct());
 applyTextSize(textPct(), false);
 textSizeIn.addEventListener('input', () => { const v = Number(textSizeIn.value); applyTextSize(v, true); writeLS(K.textSize, v); });
 // Sidebar spacing: the height of each entry, 60–120 %, per device, live.
-const NAV_SPACE = { min: 60, max: 120, def: 100 };
+const NAV_SPACE = { min: 60, max: 120, def: 60 };
 const spacePct = () => { const v = Math.round(Number(readLS(K.navSpace, NAV_SPACE.def))); return v >= NAV_SPACE.min && v <= NAV_SPACE.max ? v : NAV_SPACE.def; };
 const navSpaceIn = h('input', { type: 'range', class: 'zoom-input', min: String(NAV_SPACE.min), max: String(NAV_SPACE.max), step: '5', 'aria-label': 'Spacing of sidebar entries' });
 const navSpaceVal = h('span', { class: 'set-val' });
