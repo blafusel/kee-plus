@@ -12,6 +12,10 @@ or in a desktop browser.
 > coding agent, directed and reviewed by a human. See
 > [How it was built](#how-it-was-built).
 
+**[Try the live demo](https://blafusel.github.io/kee-plus/)**: the real
+app with made-up notes, running entirely in your browser. Nothing you type
+leaves your device; Reset starts over.
+
 ![Notes on the desktop](docs/screenshots/notes-desktop.png)
 
 ![Typing a note and saving it with Ctrl+Enter](docs/screenshots/demo.gif)
@@ -429,6 +433,21 @@ node tools/screenshots.mjs http://localhost:8765
 screenshot script uses a fresh browser profile on its own port, so the
 browser's stored notes are separate from any real instance. The demo
 server is also handy for trying the app: open `http://localhost:8765`.
+
+## Online demo
+
+The [live demo](https://blafusel.github.io/kee-plus/) is the unchanged app
+from `public/` on GitHub Pages. A service worker (`demo/sw.js`) plays the
+server in the browser: it answers sync and uploads from IndexedDB and the
+Cache API, starting from the screenshot demo notes. Each visitor gets their
+own copy; nothing syncs between devices. `tools/build_demo.py` builds the
+site, and `.github/workflows/demo.yml` publishes it on every push to main.
+To try the build locally:
+
+```sh
+python3 tools/build_demo.py /tmp/kee-site
+python3 -m http.server -d /tmp/kee-site 8770   # http://localhost:8770/
+```
 
 ## How it was built
 

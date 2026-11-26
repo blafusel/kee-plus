@@ -178,6 +178,10 @@ The Attachments view uses the same sort (`renderGallery` in files.js, `tileCmp`)
   - Synthetic key presses typed while the composer has focus become text, by design: shortcuts are ignored while typing.
 - Other sessions may commit in this repo at the same time. Check `git log` and `git status` before assuming what is uncommitted.
 
+## Online demo
+
+`tools/build_demo.py <dir>` copies `public/`, adds `demo/demo.js` (first script in `<head>`) and `demo/sw.js`, and writes `demo/data.json` plus the images from `seed_demo.py` (`make_images()`, `build()`); `.github/workflows/demo.yml` publishes it to GitHub Pages (`https://blafusel.github.io/kee-plus/`) on every push to main, only on github.com. The service worker answers `api/sync`, `api/notes`, `api/files/<id>[/thumb]` like `server.py` (LWW, rejected changes come back, type sniffing, `X-Mynotes`), keeps state in IndexedDB (`kee-demo`) and uploads in the Cache API (`kee-demo-files`), and shifts the seed's times to now. `v` is the constant `demo`. The first visit stops loading (`window.stop()`), installs the worker and reloads once. Reset sets `kee-demo-reset` in sessionStorage, and the next load clears the `mn.*` keys before the app runs (clearing them before the reload doesn't stick: the app saves on unload). The origin `blafusel.github.io` is shared with other Pages sites, so only `mn.*` keys are touched. The demo data is the made-up seed only; the build refuses files with private-looking patterns. Keep real names out of `seed_demo.py`.
+
 ## Deploy and ops
 
 - Deploy: push, then run `deploy.sh` in the NAS clone (pull `--ff-only` + `docker compose up -d --build --remove-orphans`; `docs/deploy-synology.md`; this setup's real host, IPs and remote are in the git-ignored `docs/local.md`). Never edit the NAS clone.

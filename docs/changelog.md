@@ -6,6 +6,15 @@ live in each browser's localStorage, so reverting code never touches notes.
 
 ## 2026-11-26
 
+- **Online demo on GitHub Pages.** The app runs on a static host with a
+  service worker as its server, seeded with the screenshot demo notes;
+  `tools/build_demo.py`, `demo/`, `.github/workflows/demo.yml`. Why: let
+  people try Kee+ without installing it. Revert: delete those files and
+  the README link; turn off Pages in the GitHub repo settings.
+- **Removed a real name** from the example text of Settings › Icons ›
+  Your words (now "mia"). It is still in Gitea history (`f407ecc`), never
+  on GitHub.
+
 - **Category colours and icons.** One palette colour per main
   category, shared by its subs; notes are flat tinted cards with a colour
   strip on top; tags show the category's icon and own name. Settings ›

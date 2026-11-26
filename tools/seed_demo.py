@@ -139,17 +139,25 @@ IMAGES = {
 }
 
 
-def upload_images(base, now):
-    metas = {}
+def make_images(now):
+    """The demo images: ({name: file meta}, {file id: PNG bytes})."""
+    metas, blobs = {}, {}
     for i, (name, (fn, w, h)) in enumerate(IMAGES.items()):
         data = fn(w, h)
         fid = uid()
-        call(base, "PUT", f"/api/files/{fid}", data, {
-            "X-Mynotes": "1", "X-Filename": name, "Content-Type": "application/octet-stream",
-        })
+        blobs[fid] = data
         # No thumbnail: the client shows the main file when thumb is false.
         metas[name] = {"id": fid, "name": name, "type": "image/png", "size": len(data),
                        "at": now - (20 - i) * DAY, "w": w, "h": h, "thumb": False}
+    return metas, blobs
+
+
+def upload_images(base, now):
+    metas, blobs = make_images(now)
+    for name, meta in metas.items():
+        call(base, "PUT", f"/api/files/{meta['id']}", blobs[meta["id"]], {
+            "X-Mynotes": "1", "X-Filename": name, "Content-Type": "application/octet-stream",
+        })
     return metas
 
 

@@ -5,3 +5,4 @@ __pycache__/
 *.db-shm
 docs/local.md
 .env
+_site/
