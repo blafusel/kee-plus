@@ -129,9 +129,8 @@ def handle_put(handler, fid, variant):
         return reply(400, {"error": "bad id"}, "bad id")
     if handler.headers.get("X-Mynotes") != "1":
         return reply(403, {"error": "forbidden"}, "missing X-Mynotes")
-    origin = handler.headers.get("Origin")
-    if origin and origin != "http://" + (handler.headers.get("Host") or ""):
-        return reply(403, {"error": "forbidden"}, "origin " + origin)
+    # Origin is checked for every write in Handler.parse_request (http and
+    # https, so uploads work behind `tailscale serve`).
     if raw_len is None:
         return reply(411, {"error": "length required"}, "no length")
     if length is None or length <= 0:
