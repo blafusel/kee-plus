@@ -6,6 +6,10 @@ live in each browser's localStorage, so reverting code never touches notes.
 
 ## 2026-11-26
 
+- **Dragging a note centres its category in the sidebar.** The sidebar
+  opens every main's subs during a drag, so the list grows; it now scrolls
+  the note's main category and its subs to the middle, and scrolls back
+  after the drop. Revert: `centerDragCat()` and `dragSideTop` in app.js.
 - **Note counts in Settings › Categories.** Each row shows its live notes
   (`AI · 3 notes · 2 sub`); a main category counts its sub-categories,
   as in the sidebar, and the tooltip splits the two. Revert: the `meta`

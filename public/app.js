@@ -1958,7 +1958,26 @@ addEventListener('pointercancel', endDrag);
 // selection. Only our own data type is set, so a drop on a text field inserts
 // nothing, and the file-drop handlers (which look for 'Files') ignore it.
 const NOTE_DRAG = 'application/x-mynotes-notes';
-let dragIds = null;
+let dragIds = null, dragSideTop = 0;
+// While notes are dragged every main shows its subs, so the list grows. Scroll
+// the sidebar so the dragged note's main category and its subs sit in the
+// middle (the view's category for a note without one), where the likely drop
+// targets are. A family taller than the sidebar shows from its top.
+function centerDragCat(id) {
+  const n = notes.get(id), t = n && n.theme && n.theme.term && findCategory(n.theme.term) ? n.theme.term : viewCat();
+  if (t === null || !findCategory(t)) return;
+  const fam = catFamily(mainTerm(t)), side = $('#sidebar');
+  let top = Infinity, bottom = -Infinity;
+  for (const el of navCats.querySelectorAll('[data-view^="cat:"]')) {
+    if (!fam.has(el.dataset.view.slice(4).toLowerCase())) continue;
+    const r = el.getBoundingClientRect();
+    top = Math.min(top, r.top); bottom = Math.max(bottom, r.bottom);
+  }
+  if (top === Infinity) return;
+  const s = side.getBoundingClientRect();
+  const want = bottom - top > s.height - 16 ? top - s.top - 8 : (top + bottom) / 2 - (s.top + s.height / 2);
+  side.scrollTop += want;
+}
 board.addEventListener('dragstart', e => {
   const el = e.target.closest && e.target.closest('.card');
   if (!el || !el.draggable) return;
@@ -1968,9 +1987,10 @@ board.addEventListener('dragstart', e => {
   e.dataTransfer.setData(NOTE_DRAG, dragIds.join(','));
   e.dataTransfer.effectAllowed = 'move';
   document.body.classList.add('note-drag');
+  dragSideTop = $('#sidebar').scrollTop;
   // Every category is a drop target: show the hidden empty ones (CSS) and
   // every main's subs. Deferred: changing the DOM in dragstart can cancel the drag.
-  setTimeout(() => { if (dragIds) { navCatsKey = ''; renderNavCats(); } }, 0);
+  setTimeout(() => { if (dragIds) { navCatsKey = ''; renderNavCats(); centerDragCat(id); } }, 0);
 });
 // The drop re-renders the grid, and a detached card's dragend never reaches
 // the board, so the drop cleans up too.
@@ -1981,6 +2001,7 @@ function endNoteDrag() {
   springAt('');
   dragOpen.clear();
   navCatsKey = ''; renderNavCats(); // fold back what the drag opened
+  $('#sidebar').scrollTop = dragSideTop; // and scroll back
 }
 // Holding dragged notes over a closed main category with subs opens it after
 // a moment, so they can be dropped on a sub-category.
