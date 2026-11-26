@@ -1,135 +1,203 @@
 # Kee+
 
 A self-hosted notes and to-do app in the spirit of Google Keep. It looks and
-feels like Keep, adds what Keep is missing (categories with a look you make
-yourself, sub-categories, sorting) and keeps your notes on your own machine.
-It runs as one small container, for example on a NAS, and is built to make
-adding a note as fast as possible, on a phone or in a desktop browser.
+feels like Keep, adds what Keep is missing (categories and sub-categories
+with their own colour and icon, sorting and grouping, formatting) and keeps
+your notes on your own machine. It runs as one small container, for example
+on a NAS, and is built to make adding a note as fast as possible, on a phone
+or in a desktop browser.
 
 > **Built with [Claude Code](https://claude.com/claude-code).** The code,
 > the screenshots and these docs were written by Claude Code, Anthropic's AI
 > coding agent, directed and reviewed by a human. See
 > [How it was built](#how-it-was-built).
 
-![Notes, desktop, light mode](docs/screenshots/notes-desktop-light.png)
+![Notes on the desktop](docs/screenshots/notes-desktop.png)
 
-<p>
-  <img src="docs/screenshots/notes-phone-dark.png" width="240" alt="Notes on a phone, dark mode">
-  <img src="docs/screenshots/editor-phone-light.png" width="240" alt="Note editor on a phone">
-  <img src="docs/screenshots/demo.gif" width="460" alt="Typing a note and saving it with Ctrl+Enter">
-</p>
+![Typing a note and saving it with Ctrl+Enter](docs/screenshots/demo.gif)
 
-All screenshots show made-up demo data (see [Screenshots and demo data](#screenshots-and-demo-data)).
+All screenshots show made-up demo data in dark mode (see
+[Screenshots and demo data](#screenshots-and-demo-data)). Light mode follows
+the system setting.
 
 ## What's different from Google Keep
 
 | | Google Keep | Kee+ |
 | --- | --- | --- |
 | Where notes live | Google's servers, Google account required | Your own server, one SQLite file; no account, no tracking |
-| Backgrounds | A dozen colours and a few fixed pictures | Any word becomes a category: a generated pattern you can tune |
-| Sorting | Manual drag order only | Date created, last edited or title, optionally grouped by category |
-| Organising | Labels | Categories and sub-categories with their own look, sidebar view and drag-and-drop filing |
+| Organising | Labels | Categories and sub-categories, each with a sidebar view, a shortcut key and drag-and-drop filing |
+| Look | A dozen colours and a few fixed pictures | One colour per category from a palette, fine-tunable; an icon per category; optional generated patterns |
+| Sorting | Manual drag order only | Date created, last edited or title, either direction |
+| Grouping | – | By category and sub-category, foldable sections |
+| Formatting | Basic rich text (bold, italic, underline, headings) | Bold, italic, underline, strikethrough, two headings; rich-text or Markdown editor, keyboard shortcuts |
 | Card size | Grid or list | Zoom slider from small to large cards (1–3 columns on phones) |
 | Attachments | Images and drawings | Images and PDFs, plus an Attachments gallery |
-| Quick capture | Click, type, click away | On desktop the composer is focused on load; Ctrl+Enter saves and starts the next note |
-| Keyboard | A few shortcuts | Every category has a key (1–9, 0, then letters); Alt+↑/↓ steps through categories; Ctrl+Z undoes any delete |
+| Quick capture | Click, type, click away | On desktop the composer has focus on load; Ctrl+Enter saves and starts the next note |
+| Keyboard | A few shortcuts | A key per category (1–9, 0, then letters), Alt+↑/↓ through categories, Ctrl+Z undoes any delete |
 | Selection | Select notes one by one | Also drag a box around notes with the mouse |
-| Moving over | – | One-click import of a Google Takeout export, images, labels and dates included |
+| Moving over | – | Import a Google Takeout export: images, lists, colours, pins, labels and dates |
 
-### Categories from a word
+## Categories
 
-Type any word in the palette and the note gets a background drawn from it:
-*ocean* gives waves, *garden* leaves, *recipes* warm stripes, *music* its own
-colours. Known words come from a keyword table; any other word hashes to its
-own colours and motifs. Everything is generated as SVG in the browser: no
-network, no AI, no image files. Every note of a word looks the same on every
-device, and hue, saturation, brightness and intensity can be tuned per
-category in Settings.
+A category is a word you give a note: *Travel*, *Recipes*, *Home lab*. Each
+one gets a sidebar entry that shows only its notes, a shortcut key, a
+colour and an icon. A note written inside a category view joins it
+automatically. On desktop, drag a note (or the whole selection) onto a
+sidebar entry to file it; one Undo puts it back.
 
-![Giving a note the categories "music" and "ocean", then tuning ocean's hue in Settings](docs/screenshots/theming.gif)
-
-<p>
-  <img src="docs/screenshots/palette-desktop-dark.png" width="49%" alt="The category picker: main categories with their sub-categories">
-  <img src="docs/screenshots/settings-desktop-light.png" width="49%" alt="Settings, Categories tab">
-</p>
-
-### Sorting and grouping
-
-Sort by date created, last edited or title, in either direction. "Group by
-category" (on by default) works with any of these: the board gets one
-section per category, pinned notes first in each, the rest sorted inside;
-click a heading to fold a group away. The zoom slider
-sets the card size. Sort, zoom and folded groups are remembered per device.
-
-![Sorting by title, then grouping by category, folding groups and changing the card size](docs/screenshots/sorting.gif)
-
-### Categories
-
-Each category is an entry in the sidebar that shows only its notes. A note
-written there gets the category automatically. On desktop, drag a note (or
-the whole selection) onto a sidebar entry to file it; one Undo puts it back.
-Categories can be listed A–Z, by date created or in your own order.
-
-- **Sub-categories**, one level deep: type `travel/lisbon`, or pick a main
-  category in the "Under …" menu. A sub draws its main category's pattern
-  in its own colour, and the main category's view includes its subs' notes,
-  grouped by sub. In the sidebar, main categories fold open and closed;
-  holding dragged notes over a closed one opens it for the drop.
-- **Sidebar at a glance:** each entry shows its shortcut key, its note
-  count, or both. Empty categories fade, or hide until you need them as a
-  drop target. Drag the sidebar's edge to make it wider.
+- **Sub-categories**, one level deep: *Travel › Lisbon*, *Home lab › NAS*.
+  A sub-category shares its main category's colour and is told apart by its
+  icon and name. The main category's view shows its sub-categories' notes
+  too. Cards show `Travel › Lisbon` (a setting can shorten it to `Lisbon`).
+- **Sidebar:** main categories fold open and closed. Each entry shows its
+  shortcut key, its note count (pinned ones in brackets), both or neither.
+  Empty categories fade, or hide until you drag notes. "Find category"
+  filters a long list.
 - **Search inside a category:** in a category view, search finds only that
   category's notes, shown as a chip in the search box. Remove the chip to
   widen the search to every note.
-- **Rename** a category and every note that has it follows, with one Undo.
-
-![Switching between category views and writing a note that joins the travel category](docs/screenshots/categories.gif)
 
 <p>
-  <img src="docs/screenshots/category-view-desktop-light.png" width="49%" alt="The travel category grouped by its sub-categories hiking and lisbon, with note counts and shortcut keys in the sidebar">
-  <img src="docs/screenshots/search-chip-desktop-light.png" width="49%" alt="Searching inside the travel category, shown as a chip in the search box">
+  <img src="docs/screenshots/category-view-desktop.png" width="49%" alt="The Travel category grouped by its sub-categories Hiking and Lisbon, with counts and keys in the sidebar">
+  <img src="docs/screenshots/search-chip-desktop.png" width="49%" alt="Searching inside the Travel category, shown as a chip in the search box">
 </p>
 
-### Keyboard first
+### A new category while you write
 
-On desktop the composer has focus when the page opens: type, then
-Ctrl+Enter saves and starts the next note. Every category has a key (1–9
-and 0 for the first ten, then a letter from its name), shown next to it in
-the sidebar. Alt+↑/↓ steps through Notes and every category, subs
-included. A goes back to all notes, C or N starts a note, L a list, / jumps
-to search, Esc closes.
+Open the palette (the paint-palette button under the note) and type a name.
+`Garden/Herbs` makes *Herbs* under *Garden*, creating *Garden* too if it is
+new; the "Main category / Under …" menu does the same without the slash.
+Enter adds the category, gives it to the note and closes the palette.
 
-![Jumping to categories with their keys, then stepping through them with Alt+Down](docs/screenshots/keyboard.gif)
+![Writing a note, then typing Garden/Herbs in the palette to file it in a new sub-category](docs/screenshots/new-category.gif)
 
-### Also
+![The palette while writing a new note: main categories with their sub-categories, and Garden/Herbs typed in the New category field](docs/screenshots/palette-desktop.png)
 
-- Text notes and checklists, pinning, archive, Trash with a 7-day purge.
-  Destructive actions show an Undo toast (Ctrl+Z works too) instead of a
-  confirm dialog.
+### Colours, icons and patterns
+
+- **Colours:** every main category gets the next free colour from a
+  twelve-colour palette, and keeps it. Cards are tinted with it and carry
+  a coloured strip on top; the tag at the bottom repeats it.
+- **Fine-tune:** in Settings › Categories, open a main category to pick a
+  different swatch, or shift its hue, saturation, brightness and how
+  strongly the card is tinted. Changes show live.
+- **Icons:** 53 line icons, picked from the category's name (*Recipes*
+  gets a cooking pot, *NAS* a server, *Hiking* a mountain). Pick another one
+  per category, or switch icons off for coloured dots.
+- **Background patterns:** off by default. Switched on, each category draws
+  a pattern generated from its name (waves for *ocean*, leaves for
+  *garden*, any other word hashes to its own), in the category's colour.
+  It is all SVG made in the browser: no network, no image files.
+- **Order and place:** categories can be listed A–Z, by date created or in
+  your own order. Drag a category by its grip to reorder it, or onto a main
+  category to make it a sub-category there.
+
+![Settings: changing Travel's colour, fine-tuning it, picking an icon, then turning on background patterns](docs/screenshots/colours.gif)
+
+<p>
+  <img src="docs/screenshots/settings-categories-desktop.png" width="49%" alt="Settings › Categories with Travel open: palette swatches, fine-tune sliders and the icon grid">
+  <img src="docs/screenshots/patterns-desktop.png" width="49%" alt="Notes with background patterns switched on">
+</p>
+
+### Your own icon words
+
+Settings › Icons lists every category with its icon and why it has it
+(picked, from the name, one of your words, or no match), and every icon
+with the words it matches. Add your own words to an icon, for example the
+names of the people in a *Family* category under *Person*. They sync to
+every device and stay out of the code.
+
+![Settings › Icons: Leo and Mia get the Person icon from your words; Lisbon has no match yet](docs/screenshots/settings-icons-desktop.png)
+
+## Sorting, grouping and zoom
+
+The sort menu (top bar) offers date created, last edited or title, in
+either direction. "Last edited" moves a note only when its text, list or
+attachments change, not when it is pinned, archived or re-filed.
+
+"Group by category" (on by default) splits the board into one section per
+category, pinned notes first in each. "Sub-categories too" (on by default)
+splits each category's section by its sub-categories. Click a heading to
+fold it. The zoom button sets the card size. Notes, category views and
+Pinned each remember their own sort; everything here is per device.
+
+![Sorting by title, grouping by category and sub-category, folding a group and changing the card size](docs/screenshots/sorting.gif)
+
+<p>
+  <img src="docs/screenshots/sort-menu-desktop.png" width="49%" alt="The sort menu with its grouping switches">
+  <img src="docs/screenshots/grouped-desktop.png" width="49%" alt="Notes grouped by category, with Travel split into its own notes, Hiking and Lisbon">
+</p>
+
+## Formatting, editors and shortcuts
+
+A text note can hold **bold**, _italic_, underline, ~~strikethrough~~ and
+two heading sizes. Choose the editor per device in Settings › General:
+
+- **Rich text** (default): formatting shows as you type.
+- **Markdown**: the marks stay visible (`**bold**`, `_italic_`,
+  `++underline++`, `~~strike~~`, `# ` and `## `), the same text underneath.
+
+Ctrl/⌘+B, I and U, Ctrl/⌘+Shift+X for strikethrough and Ctrl/⌘+Shift+1, 2
+and 0 for headings work in both. On phones a formatting bar sits above the
+note's toolbar.
+
+<p>
+  <img src="docs/screenshots/editor-rich-desktop.png" width="49%" alt="A note in the rich-text editor">
+  <img src="docs/screenshots/editor-markdown-desktop.png" width="49%" alt="The same note in the Markdown editor">
+</p>
+
+Keyboard first: on desktop the composer has focus when the page opens;
+type, then Ctrl+Enter saves and starts the next note. Every category has a
+key (1–9 and 0 for the first ten main categories, then a letter from its
+name). Alt+↑/↓ steps through Notes, Pinned and every category. A goes back
+to all notes, C or N starts a note, L a list, / jumps to search, Shift+/ to
+"Find category", Esc closes. The sidebar can show a shortcuts list with a
+second tab for the formatting keys of the editor you use (Settings ›
+General › Sidebar).
+
+<p>
+  <img src="docs/screenshots/shortcuts-desktop.png" width="200" alt="Sidebar shortcuts list">
+  <img src="docs/screenshots/shortcuts-format-desktop.png" width="200" alt="Sidebar formatting keys for the rich-text editor">
+  <img src="docs/screenshots/keyboard.gif" width="560" alt="Jumping to categories with their keys, then stepping through them with Alt+Down">
+</p>
+
+## Import from Google Keep
+
+Export Keep with Google Takeout and unzip it. In Settings › Import, choose
+the `Takeout/Keep` folder (on a phone, select all its files). Notes land in
+an "imported" category with their images, lists, colours, pins, archive and
+trash state and dates; labels become #tags. Importing the same export
+again skips what is already there, on any device.
+
+![Settings › Import](docs/screenshots/import-desktop.png)
+
+## Also
+
+- Text notes and checklists, pinning, a Pinned view, archive, Trash with a
+  7-day purge. Destructive actions show an Undo toast (Ctrl+Z works too)
+  instead of a confirm dialog.
 - Offline first: the app renders from a local copy and syncs in the
   background, so it opens instantly and keeps working without a connection.
   Changes sync between devices; the newest edit of a note wins.
 - Paste, drop or pick images and PDFs. Images are shrunk in the browser
-  before upload.
+  before upload. The Attachments view shows them all as a gallery.
 - Links in titles, text and checklists are clickable, LAN addresses like
   `http://nas:5000` included.
 - Per device: start new notes in the title or the body, text size and
-  sidebar spacing, where notifications show and for how long.
+  sidebar spacing, which sidebar entries show, where notifications appear
+  and for how long.
 - Light and dark mode; installable as a home-screen app (PWA) on iOS and
   Android.
 - No build step, no framework, no dependencies: Python standard library on
   the server, vanilla JS in the browser.
+
+![Attachments gallery](docs/screenshots/attachments-desktop.png)
 
 ### What Keep has and Kee+ doesn't
 
 Reminders, sharing notes with other people, drawings, voice notes, text
 recognition in images, native apps and a login. Kee+ is a single-user app
 for a trusted network.
-
-<p>
-  <img src="docs/screenshots/categories-desktop-dark.png" width="49%" alt="Notes grouped by category, dark mode">
-  <img src="docs/screenshots/attachments-desktop-light.png" width="49%" alt="Attachments gallery">
-</p>
 
 ## Security
 
@@ -277,14 +345,6 @@ Environment variables:
 `127.0.0.1`, or on `KEE_BIND` if set. It reads `KEE_BIND` and `MYNOTES_HOSTS`
 from `.env` (git-ignored).
 
-## Import from Google Keep
-
-Export Keep with Google Takeout and unzip it. Open Settings (the cog at the top
-right), go to the Import tab and choose the `Takeout/Keep` folder (on a phone, select all its files). Notes go
-to the "imported" category with their images, lists, colours, pins, archive
-state and dates; labels become #tags. Importing the same export again skips
-what is already there.
-
 ## Backup and export
 
 `notes.db` runs in WAL mode. A plain copy of `notes.db` and `notes.db-wal`
@@ -354,9 +414,9 @@ another port:
 ## Screenshots and demo data
 
 The screenshots are generated from made-up notes, never from a real
-database. To regenerate them (needs Node 22+ and Chromium; `ffmpeg` for the
-GIFs). The GIF scenes change the demo data, so start from an empty database
-each time:
+database, and always in dark mode. To regenerate them (needs Node 22+ and
+Chromium; `ffmpeg` for the GIFs). The GIF scenes change the demo data, so
+start from an empty database each time:
 
 ```sh
 rm -rf /tmp/kee-demo && mkdir -p /tmp/kee-demo

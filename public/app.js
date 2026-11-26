@@ -11,7 +11,7 @@
 
 // ---------------------------------------------------------------- store
 
-const K = { notes: 'mn.notes', rev: 'mn.rev', dirty: 'mn.dirty', view: 'mn.view', mini: 'mn.mini', sort: 'mn.sort', group: 'mn.group', collapsed: 'mn.collapsed', cardW: 'mn.cardW', cols: 'mn.cols', searchBottom: 'mn.searchBottom', catChip: 'mn.catChip', titleFirst: 'mn.titleFirst', navKeys: 'mn.navKeys', navShow: 'mn.navShow', setTab: 'mn.setTab', navOpen: 'mn.navOpen', toast: 'mn.toast', hideEmpty: 'mn.hideEmpty', catSort: 'mn.catSort', catGroup: 'mn.catGroup', textSize: 'mn.textSize', navSpace: 'mn.navSpace', altNav: 'mn.altNav', sideW: 'mn.sideW', navPins: 'mn.navPins', navHide: 'mn.navHide', editMode: 'mn.editMode', hintTab: 'mn.hintTab', pinSort: 'mn.pinSort', pinGroup: 'mn.pinGroup' };
+const K = { notes: 'mn.notes', rev: 'mn.rev', dirty: 'mn.dirty', view: 'mn.view', mini: 'mn.mini', sort: 'mn.sort', group: 'mn.group', collapsed: 'mn.collapsed', cardW: 'mn.cardW', cols: 'mn.cols', searchBottom: 'mn.searchBottom', catChip: 'mn.catChip', titleFirst: 'mn.titleFirst', navKeys: 'mn.navKeys', navShow: 'mn.navShow', setTab: 'mn.setTab', navOpen: 'mn.navOpen', toast: 'mn.toast', hideEmpty: 'mn.hideEmpty', catSort: 'mn.catSort', catGroup: 'mn.catGroup', textSize: 'mn.textSize', navSpace: 'mn.navSpace', altNav: 'mn.altNav', sideW: 'mn.sideW', navPins: 'mn.navPins', navHide: 'mn.navHide', editMode: 'mn.editMode', hintTab: 'mn.hintTab', pinSort: 'mn.pinSort', pinGroup: 'mn.pinGroup', groupSubs: 'mn.groupSubs' };
 const TRASH_DAYS = 7;
 const SETTINGS_ID = 'settings'; // one synced record, not a note: { kind: 'settings', categories }
 const COLORS = ['default', 'red', 'orange', 'yellow', 'green', 'teal', 'blue', 'indigo', 'purple', 'pink', 'brown', 'gray'];
@@ -213,9 +213,31 @@ function catLook(term, tune) {
   const c = findCategory(term), m = catParent(c) || c, pe = m ? paletteEntry(swatchOf(m)) : null;
   return { term: drawTerm(term), hue: pe ? pe[2] : themeHue(term), sat: pe ? pe[3] : 50, tune: tune || (m ? m.tune : null), pattern: catPatterns() };
 }
-function iconOf(term) {
-  const c = findCategory(term);
-  return c && CAT_ICONS[c.icon] ? c.icon : guessIcon(c ? catName(c) : term);
+// A category's icon and why it has it: picked in Settings, one of the
+// owner's words (Settings › Icons, settings.iconWords = {id: 'a, b'},
+// synced, so private names stay out of the code), a built-in hint, or none
+// (the plain tag).
+function iconWhy(term) {
+  const c = findCategory(term), name = c ? catName(c) : String(term || '');
+  if (c && CAT_ICONS[c.icon]) return { id: c.icon, how: 'picked' };
+  const t = name.toLowerCase();
+  for (const [id, words] of userIconWords()) for (const w of words) if (wordIn(t, w)) return { id, how: 'word', word: w };
+  const id = guessIcon(name);
+  return { id, how: id === 'tag' ? 'none' : 'hint' };
+}
+const iconOf = term => iconWhy(term).id;
+// "eating out" matches "Eating Out" and "eating out 2024", not "beating".
+const wordIn = (text, w) => { const i = text.indexOf(w); return i >= 0 && !/[\p{L}\p{N}]/u.test(text[i - 1] || '') && !/[\p{L}\p{N}]/u.test(text[i + w.length] || ''); };
+const splitWords = str => [...new Set(String(str || '').toLowerCase().split(',').map(w => w.trim()).filter(Boolean))];
+let iconWordsKey = null, iconWordsList = [];
+function userIconWords() {
+  const raw = settingsRec().iconWords;
+  const key = JSON.stringify(raw || null);
+  if (key !== iconWordsKey) {
+    iconWordsKey = key;
+    iconWordsList = Object.entries(raw && typeof raw === 'object' ? raw : {}).filter(([id]) => CAT_ICONS[id]).map(([id, str]) => [id, splitWords(str)]).filter(([, w]) => w.length);
+  }
+  return iconWordsList;
 }
 function catIconEl(term, id) {
   const svg = icon('x');
@@ -1308,11 +1330,13 @@ function render() {
   }
 
   const sections = [];
-  // Grouping: by main category outside a category view ('main'); inside a
-  // main category that has subs, by sub-category ('sub'): its own notes
-  // first, then one section per sub in Settings order.
+  // Grouping: by main category outside a category view ('main', or 'tree'
+  // with "Sub-categories too": each main's own notes, then one smaller
+  // section per sub); inside a main category that has subs, by sub-category
+  // ('sub', also only with "Sub-categories too"): its own notes first, then
+  // one section per sub in Settings order.
   const catSubs = cat !== null && findCategory(cat) && !catParent(findCategory(cat)) ? subsOf(cat) : [];
-  groupByCat = groupCats && !q ? (!cat ? 'main' : catSubs.length ? 'sub' : false) : false;
+  groupByCat = groupCats && !q ? (!cat ? (groupSubs ? 'tree' : 'main') : catSubs.length && groupSubs ? 'sub' : false) : false;
   const pinFirst = ns => ns.filter(n => n.pinned).concat(ns.filter(n => !n.pinned));
   if (groupByCat === 'sub') {
     const main = findCategory(cat).term;
@@ -1332,7 +1356,23 @@ function render() {
       if (!groups.has(t.toLowerCase())) groups.set(t.toLowerCase(), [t, []]);
       groups.get(t.toLowerCase())[1].push(n);
     }
-    for (const [term, ns] of groups.values()) if (ns.length) sections.push([nameOf(term), pinFirst(ns), term.toLowerCase()]);
+    const order = orderedCats();
+    for (const [term, ns] of groups.values()) {
+      if (!ns.length) continue;
+      const key = term.toLowerCase();
+      const subs = groupByCat === 'tree' ? order.filter(c => sameTerm(catParent(c)?.term || '', term)) : [];
+      const inSubs = new Set();
+      const subSecs = subs.map(c => {
+        const k = c.term.toLowerCase(), sns = ns.filter(n => n.theme.term.toLowerCase() === k);
+        for (const n of sns) inSubs.add(n);
+        return [catName(c), pinFirst(sns), k, { sub: true }];
+      }).filter(x => x[1].length);
+      if (!subSecs.length) { sections.push([nameOf(term), pinFirst(ns), key]); continue; }
+      // The main section's label counts every note of the family; folding it
+      // folds its sub-sections too.
+      sections.push([nameOf(term), pinFirst(ns.filter(n => !inSubs.has(n))), key, { n: ns.length }]);
+      if (!collapsed.has(key)) sections.push(...subSecs);
+    }
     if (none.length) sections.push(['No category', pinFirst(none), '']);
   } else if (!q && (view === 'notes' || cat)) {
     const pinned = list.filter(n => n.pinned), others = list.filter(n => !n.pinned);
@@ -1382,16 +1422,16 @@ function fillBoard(n) {
   const added = [];
   const s = page.sections;
   while (n > 0 && page.si < s.length) {
-    const [label, ns, key] = s[page.si];
+    const [label, ns, key, opt = {}] = s[page.si];
     if (!page.grid) {
       let head = null, cls = 'grid', shut = false;
       if (key === undefined) head = label ? h('h2', { class: 'section-label' }, label) : null;
       else {
         shut = collapsed.has(key);
-        cls = 'grid group' + (shut ? ' shut' : '');
+        cls = 'grid group' + (shut ? ' shut' : '') + (opt.sub ? ' group-sub' : '') + (opt.n && !ns.length && !shut ? ' group-bare' : '');
         head = h('h2', { class: 'section-label' },
           h('button', { class: 'group-btn', type: 'button', 'aria-expanded': String(!shut), dataset: { group: key } },
-            icon('chev'), h('span', null, label), h('span', { class: 'group-n' }, String(ns.length))));
+            icon('chev'), h('span', null, label), h('span', { class: 'group-n' }, String(opt.n || ns.length))));
       }
       page.grid = h('div', { class: cls }, head);
       board.append(page.grid);
@@ -1523,7 +1563,7 @@ function card(n) {
 // A sub-category's tag shows its own name; the tooltip names its main one.
 function cardTag(n) {
   const term = n.theme && n.theme.term, vc = viewCat();
-  const hide = !!term && ((vc !== null && sameTerm(term, vc)) || groupByCat === 'sub' || (groupByCat === 'main' && !catParent(findCategory(term))));
+  const hide = !!term && ((vc !== null && sameTerm(term, vc)) || groupByCat === 'sub' || groupByCat === 'tree' || (groupByCat === 'main' && !catParent(findCategory(term))));
   // The colour already names the main category, so a sub shows only its own
   // name (with its icon); the full "main › sub" is the tooltip. With
   // "Show the main category on cards" a sub's tag starts with its main's name,
@@ -1696,7 +1736,11 @@ const sortBtn = $('#sortBtn'), sortMenu = $('#sortMenu');
 sortMenu.append(...Object.entries(SORTS).map(([key, { label }]) =>
   h('button', { class: 'menu-item', type: 'button', role: 'menuitemradio', dataset: { sort: key } }, icon('tick'), h('span', null, label))),
   h('div', { class: 'menu-sep', role: 'separator' }),
-  h('button', { class: 'menu-item', type: 'button', role: 'menuitemcheckbox', dataset: { groupToggle: '' } }, icon('tick'), h('span', null, 'Group by category')));
+  h('button', { class: 'menu-item', type: 'button', role: 'menuitemcheckbox', dataset: { groupToggle: '' } }, icon('tick'), h('span', null, 'Group by category')),
+  h('button', { class: 'menu-item menu-sub', type: 'button', role: 'menuitemcheckbox', dataset: { subsToggle: '' } }, icon('tick'), h('span', null, 'Sub-categories too')));
+// "Sub-categories too": grouping also splits each main category by its
+// sub-categories. Per device, one setting for every view, default on.
+let groupSubs = readLS(K.groupSubs, true) !== false;
 function sortBtnLabel() {
   sortBtn.title = sortBtn.ariaLabel = 'Sort · ' + SORTS[sortBy].label + (groupCats ? ' · grouped by category' : '');
 }
@@ -1789,6 +1833,10 @@ function openSortMenu() {
   const g = sortMenu.querySelector('[data-group-toggle]');
   g.classList.toggle('on', groupCats);
   g.setAttribute('aria-checked', String(groupCats));
+  const gs = sortMenu.querySelector('[data-subs-toggle]');
+  gs.classList.toggle('on', groupSubs);
+  gs.setAttribute('aria-checked', String(groupSubs));
+  gs.disabled = !groupCats;
   placeMenu(sortMenu, sortBtn);
 }
 function closeSortMenu() { sortMenu.hidden = true; sortBtn.setAttribute('aria-expanded', 'false'); }
@@ -1798,6 +1846,9 @@ sortMenu.addEventListener('click', e => {
   if (e.target.closest('[data-group-toggle]')) {
     groupCats = !groupCats;
     writeLS(sortKeys()[1], groupCats);
+  } else if (e.target.closest('[data-subs-toggle]')) {
+    groupSubs = !groupSubs;
+    writeLS(K.groupSubs, groupSubs);
   } else {
     const b = e.target.closest('[data-sort]');
     if (!b) return;
@@ -2572,7 +2623,7 @@ catOrderSeg.addEventListener('change', e => {
 });
 
 // Settings tabs: one group at a time, the last one remembered per device.
-const SET_TABS = [['general', 'General'], ['categories', 'Categories'], ['import', 'Import']];
+const SET_TABS = [['general', 'General'], ['categories', 'Categories'], ['icons', 'Icons'], ['import', 'Import']];
 let setTab = SET_TABS.some(t => t[0] === readLS(K.setTab, '')) ? readLS(K.setTab, '') : 'general';
 const setTabBar = h('div', { class: 'set-tabs', role: 'tablist', 'aria-label': 'Settings' },
   ...SET_TABS.map(([id, label]) => h('button', { class: 'set-tab', type: 'button', role: 'tab', id: 'setTab-' + id, 'aria-controls': 'setPane-' + id, dataset: { tab: id } }, label)));
@@ -2596,6 +2647,80 @@ setTabBar.addEventListener('keydown', e => {
   showSetTab(SET_TABS[(i + d + SET_TABS.length) % SET_TABS.length][0], true);
 });
 const setPane = (id, ...kids) => h('div', { class: 'set-pane', role: 'tabpanel', id: 'setPane-' + id, 'aria-labelledby': 'setTab-' + id, dataset: { tab: id } }, ...kids);
+
+// Settings › Icons: every category with its icon and why, and every icon
+// with its built-in words, the owner's words and the categories using it.
+const icoCatList = h('div', { class: 'ico-cats' });
+const icoGrid = h('div', { class: 'ico-grid' });
+const icoFind = h('input', { type: 'search', placeholder: 'Find icon or word', 'aria-label': 'Find icon or word', autocomplete: 'off' });
+icoFind.addEventListener('input', () => renderIcons(true));
+// The built-in hints as plain words: /\bpets?\b|wi-?fi/ -> pet, wifi.
+// Groups keep their first choice (bak(e|ing) -> bake), an optional "s" goes,
+// an optional space or dash stays (home ?lab -> home lab).
+const hintWords = id => CAT_ICON_HINTS.filter(([, i]) => i === id)
+  .flatMap(([re]) => re.source.replace(/\(([^)|]*)\|[^)]*\)/g, '$1').split('|'))
+  .map(w => w.replace(/\\b/g, '').replace(/s\?/g, '').replace(/\?/g, '').replace(/\\(.)/g, '$1').trim()).filter(Boolean);
+function iconPicker(term) {
+  const c = findCategory(term), why = iconWhy(term);
+  const sel = h('select', { class: 'ico-sel', dataset: { icoTerm: c.term }, 'aria-label': 'Icon of ' + catLabel(c.term) },
+    h('option', { value: '' }, 'Auto' + (c.icon && CAT_ICONS[c.icon] ? '' : ' (' + CAT_ICONS[why.id][0] + ')')),
+    ...Object.entries(CAT_ICONS).map(([id, [label]]) => h('option', { value: id }, label)));
+  sel.value = c.icon && CAT_ICONS[c.icon] ? c.icon : '';
+  return sel;
+}
+function renderIcons(gridOnly) {
+  const a = document.activeElement;
+  if (a && settingsEl.contains(a) && a.matches('.ico-words input')) return; // don't wipe words being typed
+  if (!gridOnly) {
+    const cats = orderedCats();
+    icoCatList.replaceChildren(...cats.map(c => {
+      const why = iconWhy(c.term), sub = !!catParent(c);
+      const how = { picked: 'Picked', word: 'Your word \u201c' + why.word + '\u201d', hint: 'From the name', none: 'No match' }[why.how];
+      const row = h('div', { class: 'ico-cat' + (sub ? ' sub' : '') + (why.how === 'none' ? ' is-none' : '') },
+        catMark(h('span', { class: 'ico-mark' }), c.term), h('span', { class: 'ico-name' }, catName(c)), h('span', { class: 'ico-how' }, how), iconPicker(c.term));
+      return row;
+    }));
+    if (!cats.length) icoCatList.append(h('p', { class: 'settings-hint' }, 'No categories yet.'));
+  }
+  const q = icoFind.value.trim().toLowerCase(), mine = settingsRec().iconWords || {}, cats = categories();
+  icoGrid.replaceChildren(...Object.entries(CAT_ICONS).flatMap(([id, [label]]) => {
+    const words = hintWords(id), own = typeof mine[id] === 'string' ? mine[id] : '';
+    if (q && ![label, id, own, ...words].some(w => w.toLowerCase().includes(q))) return [];
+    const users = cats.filter(c => iconOf(c.term) === id);
+    const svg = icon('x'); svg.setAttribute('class', 'ic'); svg.firstChild.setAttribute('href', '#ci-' + id);
+    return [h('div', { class: 'ico-card' },
+      h('div', { class: 'ico-head' }, svg, h('b', null, label), h('code', null, id)),
+      h('div', { class: 'ico-words-built' }, words.length ? 'Built in: ' + words.join(', ') : 'No built-in words'),
+      h('label', { class: 'ico-words' }, h('span', null, 'Your words'),
+        h('input', { type: 'text', value: own, placeholder: 'e.g. mia, eating out', dataset: { icoWords: id }, autocomplete: 'off', spellcheck: 'false' })),
+      users.length ? h('div', { class: 'ico-users' }, 'Used by ' + users.map(c => catName(c)).join(', ')) : null)];
+  }));
+  if (!icoGrid.firstChild) icoGrid.append(h('p', { class: 'settings-hint' }, 'No icon matches.'));
+}
+// Your words: saved on change (blur or Enter). A word belongs to one icon;
+// adding it here removes it from any other.
+function setIconWords(id, str) {
+  const words = splitWords(str), cur = { ...(settingsRec().iconWords || {}) };
+  for (const k of Object.keys(cur)) if (k !== id) { const rest = splitWords(cur[k]).filter(w => !words.includes(w)); if (rest.length) cur[k] = rest.join(', '); else delete cur[k]; }
+  if (words.length) cur[id] = words.join(', '); else delete cur[id];
+  setSettings({ iconWords: cur });
+  navCatsKey = '';
+}
+icoGrid.addEventListener('change', e => {
+  const i = e.target.closest('[data-ico-words]');
+  if (!i) return;
+  setIconWords(i.dataset.icoWords, i.value);
+  i.blur();
+  render();
+});
+icoGrid.addEventListener('keydown', e => { if (e.key === 'Enter' && e.target.matches('[data-ico-words]')) e.target.blur(); });
+icoCatList.addEventListener('change', e => {
+  const s = e.target.closest('[data-ico-term]');
+  if (!s) return;
+  patchCategory(s.dataset.icoTerm, { icon: s.value || undefined });
+  navCatsKey = '';
+  render();
+});
 
 const settingsEl = h('section', { class: 'settings' }, setTabBar,
   setPane('general',
@@ -2650,6 +2775,14 @@ const settingsEl = h('section', { class: 'settings' }, setTabBar,
   h('form', { class: 'cat-add' }, catInput, catParentSel, h('button', { class: 'text-btn', type: 'submit' }, 'Add')),
   catOrderSeg,
   catList),
+  setPane('icons',
+    h('h2', null, 'Icons'),
+    h('p', { class: 'settings-hint' }, 'A category gets the icon you pick for it, else the first icon whose words appear in its name: your words first, then the built-in ones. No match: the plain tag. Your words sync to every device and are a good place for names, e.g. people.'),
+    h('h3', { class: 'set-h3' }, 'Categories'),
+    icoCatList,
+    h('h3', { class: 'set-h3' }, 'Available icons'),
+    h('div', { class: 'nav-find ico-find' }, icon('search'), icoFind),
+    icoGrid),
   setPane('import', importEl));
 showSetTab(setTab);
 
@@ -2686,6 +2819,7 @@ function catRow(cat, i, all, mains) {
   const tiles = [catTile(term)];
   const row = h('div', { class: 'cat' + (open ? ' open' : '') + (parent ? ' cat-sub' : ''), dataset: { term } },
     h('div', { class: 'cat-head' },
+      h('span', { class: 'cat-grip', 'aria-hidden': 'true', title: 'Drag to reorder, or onto a main category to move it there' }, icon('grip')),
       h('button', { class: 'cat-toggle', type: 'button', 'data-toggle': '', 'aria-expanded': String(open), title: 'Colour, icon and place' },
         h('div', { class: 'cat-prev' }, tiles),
         h('span', { class: 'cat-term' }, catName(cat), subs.length ? h('span', { class: 'cat-n' }, ` · ${subs.length} sub`) : null),
@@ -2755,6 +2889,7 @@ function renderSettings() {
   catPatternsBox.checked = catPatterns();
   catIconsBox.checked = catIcons();
   catTagMainBox.checked = catTagMain();
+  renderIcons();
   if (catDrag) return;
   if (document.activeElement && document.activeElement.matches('[data-rename-input]') && catList.contains(document.activeElement)) return; // don't wipe a name being typed
   const cats = orderedCats(), mains = cats.filter(c => !catParent(c)).map(c => c.term);
@@ -2928,6 +3063,141 @@ settingsEl.addEventListener('change', e => {
 settingsEl.addEventListener('keydown', e => {
   if (e.key === 'Escape' && e.target.matches('[data-rename-input]')) { e.preventDefault(); e.stopPropagation(); endRename(false); }
 });
+
+// Drag a category by its grip (mouse or touch; pointer events, so it works
+// on phones too). Where it lands:
+// - the middle of a main category's row: becomes its last sub-category;
+// - a gap: takes that place. The row below the gap decides the level: a
+//   sub-category there makes it a sibling sub, anything else a main one.
+// A main category with subs moves with them and stays a main one. A drop
+// that changes the order switches the order to Custom. One Undo.
+let catMove = null; // { term, block, x0, y0, on, ghost, line, drop, raf, vy }
+const DRAG_START = 5; // px before a press on the grip becomes a drag
+catList.addEventListener('pointerdown', e => {
+  const grip = e.target.closest('.cat-grip');
+  if (!grip || e.button > 0 || renamingCat !== null) return;
+  const term = grip.closest('.cat').dataset.term;
+  e.preventDefault();
+  grip.setPointerCapture(e.pointerId);
+  const cats = orderedCats(), me = findCategory(term);
+  const block = [me.term, ...(catParent(me) ? [] : cats.filter(c => sameTerm(catParent(c)?.term || '', me.term)).map(c => c.term))];
+  catMove = { term, block, x0: e.clientX, y0: e.clientY, on: false, drop: null, vy: 0, raf: 0, grip, flat: cats.map(c => c.term) };
+});
+catList.addEventListener('pointermove', e => {
+  const m = catMove;
+  if (!m) return;
+  if (!m.on) {
+    if (Math.hypot(e.clientX - m.x0, e.clientY - m.y0) < DRAG_START) return;
+    m.on = true;
+    catDrag = true; // no list rebuild under the drag
+    document.body.classList.add('cat-moving');
+    for (const r of catList.querySelectorAll('.cat')) if (m.block.some(t => sameTerm(t, r.dataset.term))) r.classList.add('is-dragged');
+    m.ghost = h('div', { class: 'cat-ghost' }, catMark(h('span', { class: 'ico-mark' }), m.term), h('span', null, catLabel(m.term)));
+    m.line = h('div', { class: 'cat-drop-line', hidden: true });
+    document.body.append(m.ghost, m.line);
+  }
+  m.ghost.style.transform = `translate(${e.clientX + 12}px, ${e.clientY + 8}px)`;
+  m.drop = catDropAt(e.clientX, e.clientY);
+  showCatDrop(m.drop);
+  // Scroll the page while near the top or bottom edge.
+  const edge = 60, top = $('.topbar') ? $('.topbar').getBoundingClientRect().bottom : 0;
+  m.vy = e.clientY < top + edge ? -Math.ceil((top + edge - e.clientY) / 4) : e.clientY > innerHeight - edge ? Math.ceil((e.clientY - innerHeight + edge) / 4) : 0;
+  m.lastX = e.clientX; m.lastY = e.clientY;
+  if (m.vy && !m.raf) {
+    const step = () => {
+      if (!catMove || !catMove.vy) { if (catMove) catMove.raf = 0; return; }
+      scrollBy(0, catMove.vy);
+      catMove.drop = catDropAt(catMove.lastX, catMove.lastY);
+      showCatDrop(catMove.drop);
+      catMove.raf = requestAnimationFrame(step);
+    };
+    m.raf = requestAnimationFrame(step);
+  }
+});
+// The drop under the pointer: { kind: 'into', main } or { kind: 'gap', index,
+// parent } (index into the flat order without the dragged block), or null.
+function catDropAt(x, y) {
+  const m = catMove;
+  const el = document.elementFromPoint(x, y), row = el && el.closest('.cat');
+  if (!row || !catList.contains(row) || m.block.some(t => sameTerm(t, row.dataset.term))) return null;
+  const term = row.dataset.term, cat = findCategory(term), r = row.querySelector('.cat-head').getBoundingClientRect();
+  const me = findCategory(m.term), hasSubs = m.block.length > 1;
+  const f = (y - r.top) / r.height;
+  const rest = m.flat.filter(t => !m.block.some(b => sameTerm(b, t)));
+  const at = rest.findIndex(t => sameTerm(t, term));
+  if (!catParent(cat) && f > 0.3 && f < 0.7) {
+    if (hasSubs || sameTerm(catParent(me)?.term || '', term)) return null; // already there, or would nest two levels
+    return { kind: 'into', main: term, row };
+  }
+  const index = f <= 0.5 ? at : at + 1;
+  // The row below the gap sets the level: a sub there makes a sibling sub
+  // (so just below a main with subs means its first sub); a main category or
+  // the end of the list means main level.
+  const below = rest[index], belowCat = below ? findCategory(below) : null;
+  const parent = belowCat && catParent(belowCat) ? catParent(belowCat).term : '';
+  if (parent && hasSubs) return null;
+  return { kind: 'gap', index, parent, row, after: f > 0.5 };
+}
+function showCatDrop(d) {
+  const m = catMove;
+  for (const r of catList.querySelectorAll('.cat.is-into')) r.classList.remove('is-into');
+  m.line.hidden = !d || d.kind !== 'gap';
+  if (!d) return;
+  if (d.kind === 'into') return d.row.classList.add('is-into');
+  const r = d.row.getBoundingClientRect(), list = catList.getBoundingClientRect();
+  const y = d.after ? r.bottom + 4 : r.top - 4;
+  const indent = d.parent ? 28 : 0;
+  Object.assign(m.line.style, { top: y - 1.5 + 'px', left: list.left + indent + 'px', width: list.width - indent + 'px' });
+}
+function endCatMove(drop) {
+  const m = catMove;
+  if (!m) return;
+  catMove = null;
+  cancelAnimationFrame(m.raf);
+  document.body.classList.remove('cat-moving');
+  if (m.ghost) m.ghost.remove();
+  if (m.line) m.line.remove();
+  for (const r of catList.querySelectorAll('.is-dragged, .is-into')) r.classList.remove('is-dragged', 'is-into');
+  catDrag = false;
+  if (m.on && drop && m.drop) applyCatMove(m, m.drop);
+  else render();
+}
+catList.addEventListener('pointerup', () => endCatMove(true));
+catList.addEventListener('pointercancel', () => endCatMove(false));
+addEventListener('keydown', e => { if (catMove && e.key === 'Escape') { e.preventDefault(); e.stopPropagation(); endCatMove(false); } }, true);
+// No click (opening the row) after a drag.
+catList.addEventListener('click', e => { if (e.target.closest('.cat-grip')) e.stopPropagation(); }, true);
+function applyCatMove(m, d) {
+  const s = settingsRec(), before = { categories: categories(), catOrder: s.catOrder, catCustom: s.catCustom };
+  const me = findCategory(m.term), from = catParent(me)?.term || '';
+  const to = d.kind === 'into' ? d.main : d.parent;
+  if (!sameTerm(from, to)) {
+    const clash = findChild(catName(me), to);
+    if (clash && !sameTerm(clash.term, me.term)) { toast(`There is already a category "${catLabel(clash.term)}"`); return render(); }
+  }
+  const cats = categories().map(c => {
+    if (!sameTerm(c.term, me.term)) return c;
+    const { parent, ...rest } = c;
+    return to ? { ...rest, parent: findCategory(to).term } : rest;
+  });
+  const patch = {};
+  let reordered = false;
+  if (d.kind === 'gap') {
+    const rest = m.flat.filter(t => !m.block.some(b => sameTerm(b, t)));
+    const terms = [...rest.slice(0, d.index), ...m.block, ...rest.slice(d.index)];
+    reordered = terms.some((t, i) => !sameTerm(t, m.flat[i]));
+    if (reordered) { patch.catCustom = terms; patch.catOrder = 'custom'; }
+  }
+  if (sameTerm(from, to) && !reordered) return render();
+  setCategories(cats);
+  if (Object.keys(patch).length) setSettings(patch);
+  navCatsKey = '';
+  const name = catName(me);
+  const what = !sameTerm(from, to) ? (to ? `"${name}" moved under ${catName(findCategory(to))}` : `"${name}" is a main category now`) : `"${name}" moved`;
+  const order = reordered && before.catOrder !== 'custom' ? '; order is now Custom' : '';
+  toast(what + order, () => { setSettings({ categories: before.categories, catOrder: before.catOrder, catCustom: before.catCustom }); navCatsKey = ''; });
+  render();
+}
 settingsEl.addEventListener('pointerdown', e => { if (e.target.closest('input[data-k]')) catDrag = true; });
 settingsEl.addEventListener('toggle', e => { if (e.target.matches('.cat-tune')) tuneOpen = e.target.open; }, true);
 addEventListener('pointerup', () => { catDrag = false; });

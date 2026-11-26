@@ -9,7 +9,8 @@
 // built-in WebSocket (Node 22+); no npm packages. Each run uses a fresh
 // browser profile, so nothing from a real browser leaks in. Writes PNGs to
 // docs/screenshots/ and, if ffmpeg is installed, the GIFs next to them.
-// The GIF scenes change the demo data, so seed a fresh server for each run.
+// Everything is taken in dark mode. The GIF scenes change the demo data, so
+// seed a fresh server for each run.
 
 import { spawn, spawnSync } from 'node:child_process';
 import { mkdtempSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
@@ -25,7 +26,6 @@ const CHROME = process.env.CHROME || 'chromium';
 const sleep = ms => new Promise(r => setTimeout(r, ms));
 
 const DESKTOP = { name: 'desktop', width: 1280, height: 820, mobile: false };
-const PHONE = { name: 'phone', width: 390, height: 844, mobile: true };
 
 async function cdpConnect(profile) {
   for (let i = 0; i < 50; i++) {
@@ -77,19 +77,20 @@ async function waitFor(cdp, expr, ms = 10000) {
 
 // Let layout and images settle before a shot.
 async function settle(cdp) {
-  await waitFor(cdp, `[...document.images].every(i => i.complete)`);
+  // Lazy images below the fold never load; wait only for the ones in view.
+  await waitFor(cdp, `[...document.images].every(i => i.complete || i.getBoundingClientRect().top > innerHeight)`);
   await evaluate(cdp, `new Promise(r => requestAnimationFrame(() => requestAnimationFrame(r)))`);
   await sleep(400);
 }
 
-async function shot(cdp, file) {
+async function shot(cdp, file, clip) {
   await settle(cdp);
-  const { data } = await cdp.send('Page.captureScreenshot', { format: 'png' });
+  const { data } = await cdp.send('Page.captureScreenshot', { format: 'png', ...(clip ? { clip: { ...clip, scale: 1 } } : {}) });
   writeFileSync(join(OUT, file), Buffer.from(data, 'base64'));
   console.log('wrote', file);
 }
 
-async function setup(cdp, dev, scheme, prefs = {}) {
+async function setup(cdp, dev, prefs = {}, scheme = 'dark') {
   await cdp.send('Emulation.setDeviceMetricsOverride', {
     width: dev.width, height: dev.height, deviceScaleFactor: dev.mobile ? 2 : 1, mobile: dev.mobile,
   });
@@ -106,42 +107,83 @@ async function setup(cdp, dev, scheme, prefs = {}) {
   await evaluate(cdp, `document.activeElement && document.activeElement.blur()`);
 }
 
+const blur = cdp => evaluate(cdp, `document.activeElement && document.activeElement.blur()`);
 const noteId = title => `[...notes.values()].find(n => n.title === ${JSON.stringify(title)}).id`;
 
+const TALL = { ...DESKTOP, height: 1180 };
+const view = term => `setView('cat:' + categories().find(c => catName(c) === ${JSON.stringify(term)}).term)`;
+
 async function screenshots(cdp) {
-  for (const scheme of ['light', 'dark']) {
-    for (const dev of [DESKTOP, PHONE]) {
-      const tag = `${dev.name}-${scheme}`;
-      await setup(cdp, dev, scheme, { 'mn.group': false });
-      await shot(cdp, `notes-${tag}.png`);
+  // Notes, ungrouped: the masonry board.
+  await setup(cdp, DESKTOP, { 'mn.group': false });
+  await shot(cdp, 'notes-desktop.png');
+  // Background patterns instead of flat colours.
+  await evaluate(cdp, `setSettings({ catPatterns: true }); render()`);
+  await shot(cdp, 'patterns-desktop.png');
+  await evaluate(cdp, `setSettings({ catPatterns: false }); render()`);
+  // Grouped by category and sub-category (the defaults).
+  await setup(cdp, DESKTOP);
+  await evaluate(cdp, `scrollTo(0, document.querySelector('[data-group="travel"]').getBoundingClientRect().top + scrollY - 80)`);
+  await shot(cdp, 'grouped-desktop.png');
+  await evaluate(cdp, `scrollTo(0, 0)`);
+  // The sort menu: three sorts, both directions, grouping switches.
+  await evaluate(cdp, `openSortMenu()`);
+  await shot(cdp, 'sort-menu-desktop.png');
+  await evaluate(cdp, `closeSortMenu()`);
+  // A main category's view: grouped by its subs, counts and keys in the sidebar.
+  await setup(cdp, DESKTOP, { 'mn.navShow': 'both' });
+  await evaluate(cdp, view('Travel'));
+  await shot(cdp, 'category-view-desktop.png');
+  await evaluate(cdp, `search.value = 'tram'; search.dispatchEvent(new Event('input', { bubbles: true }))`);
+  await shot(cdp, 'search-chip-desktop.png');
+  await evaluate(cdp, `clearSearch()`);
+  await evaluate(cdp, `setView('attachments')`);
+  await shot(cdp, 'attachments-desktop.png');
 
-      await evaluate(cdp, `openModal(${noteId('Lisbon in May')})`);
-      await evaluate(cdp, `document.activeElement && document.activeElement.blur()`);
-      await shot(cdp, `editor-${tag}.png`);
-      await evaluate(cdp, `closeModal()`);
+  // A new note gets a new category from the palette: main/sub typed in.
+  await setup(cdp, DESKTOP);
+  await evaluate(cdp, `composer.root.click(); composer.title.focus()`);
+  await evaluate(cdp, `composer.title.value = 'Basil cuttings'; composer.title.dispatchEvent(new Event('input', { bubbles: true }))`);
+  await evaluate(cdp, `document.querySelector('#composer [data-a="color"]').click()`);
+  await waitFor(cdp, `!pal.hidden`);
+  await evaluate(cdp, `palInput.value = 'Garden/Herbs'`);
+  await shot(cdp, 'palette-desktop.png');
+  await evaluate(cdp, `closePalette(); composer.close()`);
 
-      if (dev === PHONE) continue; // the rest reads best on desktop
-      await setup(cdp, dev, scheme, { 'mn.group': true, 'mn.catGroup': true, 'mn.navShow': 'both' });
-      await shot(cdp, `categories-${tag}.png`);
-      // A main category with subs: grouped by sub, unfolded in the sidebar.
-      await evaluate(cdp, `setView('cat:travel')`);
-      await shot(cdp, `category-view-${tag}.png`);
-      // Search inside the category: the chip in the search box.
-      await evaluate(cdp, `search.value = 'tram'; search.dispatchEvent(new Event('input', { bubbles: true }))`);
-      await shot(cdp, `search-chip-${tag}.png`);
-      await evaluate(cdp, `clearSearch()`);
-      // The category picker: mains with their subs, one box each.
-      await evaluate(cdp, `openModal(${noteId('Where to eat in Lisbon')})`);
-      await evaluate(cdp, `document.querySelector('#modalEditor [data-a="color"]').click()`);
-      await waitFor(cdp, `!pal.hidden`);
-      await shot(cdp, `palette-${tag}.png`);
-      await evaluate(cdp, `closePalette(); closeModal()`);
-      await evaluate(cdp, `setView('attachments')`);
-      await shot(cdp, `attachments-${tag}.png`);
-      await evaluate(cdp, `setView('settings'); showSetTab('categories')`);
-      await shot(cdp, `settings-${tag}.png`);
-    }
-  }
+  // Editors: rich text and Markdown, same note.
+  await setup(cdp, DESKTOP);
+  await evaluate(cdp, `openModal(${noteId('Local LLM setup')})`);
+  await blur(cdp);
+  await shot(cdp, 'editor-rich-desktop.png');
+  await evaluate(cdp, `closeModal()`);
+  await setup(cdp, DESKTOP, { 'mn.editMode': 'md' });
+  await evaluate(cdp, `openModal(${noteId('Local LLM setup')})`);
+  await blur(cdp);
+  await shot(cdp, 'editor-markdown-desktop.png');
+  await evaluate(cdp, `closeModal()`);
+
+  // The sidebar's shortcuts list and its formatting tab.
+  await setup(cdp, DESKTOP, { 'mn.navHide': [] });
+  const side = await evaluate(cdp, `(() => { const r = document.querySelector('#sidebar').getBoundingClientRect(); return { x: 0, y: r.top, width: Math.round(r.width), height: Math.round(r.height) }; })()`);
+  await evaluate(cdp, `document.querySelector('#hintTab-keys').click()`);
+  await shot(cdp, 'shortcuts-desktop.png', side);
+  await evaluate(cdp, `document.querySelector('#hintTab-fmt').click()`);
+  await shot(cdp, 'shortcuts-format-desktop.png', side);
+
+  // Settings: a main category open (colour, fine-tune, icon), the Icons
+  // tab with the owner's words, the Import tab.
+  await setup(cdp, TALL);
+  await evaluate(cdp, `setView('settings'); showSetTab('categories'); openCat = categories().find(c => catName(c) === 'Travel').term; tuneOpen = true; render()`);
+  await evaluate(cdp, `scrollTo(0, document.querySelector('.set-pane .cat.open').getBoundingClientRect().top + scrollY - 150)`);
+  await shot(cdp, 'settings-categories-desktop.png');
+  await setup(cdp, { ...DESKTOP, height: 1540 });
+  await evaluate(cdp, `setView('settings'); showSetTab('icons'); icoFind.value = 'person'; renderIcons(); scrollTo(0, 0)`);
+  await shot(cdp, 'settings-icons-desktop.png');
+  await setup(cdp, TALL);
+  await evaluate(cdp, `setView('settings')`);
+  await evaluate(cdp, `icoFind.value = ''; showSetTab('import'); scrollTo(0, 0)`);
+  await shot(cdp, 'import-desktop.png', { x: 0, y: 0, width: 1280, height: 720 });
+  await evaluate(cdp, `showSetTab('general')`);
 }
 
 // --- GIFs -------------------------------------------------------------------
@@ -154,7 +196,7 @@ const CURSOR = `(() => {
   const c = document.createElement('div');
   c.id = 'demo-cursor';
   c.style.cssText = 'position:fixed;z-index:99999;left:640px;top:410px;width:22px;height:22px;margin:-11px 0 0 -11px;' +
-    'border-radius:50%;background:rgba(30,30,30,.35);border:2px solid #fff;box-shadow:0 1px 4px rgba(0,0,0,.4);' +
+    'border-radius:50%;background:rgba(255,255,255,.35);border:2px solid #fff;box-shadow:0 1px 6px rgba(0,0,0,.8);' +
     'pointer-events:none;transition:left .35s ease,top .35s ease,transform .15s';
   document.body.append(c);
 })()`;
@@ -224,18 +266,17 @@ const range = (from, to, step) => {
   return out;
 };
 const card = title => `document.querySelector('#board .card[data-id="' + ${noteId(title)} + '"]')`;
-const blur = cdp => evaluate(cdp, `document.activeElement && document.activeElement.blur()`);
 
 // Quick capture: type a note, save with Ctrl+Enter, see it land.
 async function gifCapture(cdp) {
   const r = recorder(cdp);
-  await setup(cdp, DESKTOP, 'light', { 'mn.group': false });
+  await setup(cdp, DESKTOP, { 'mn.group': false });
   await settle(cdp);
   await r.frame(8);
   await r.click(`document.querySelector('#composer')`);
-  await evaluate(cdp, `document.querySelector('#composer .ed-title').focus()`);
+  await evaluate(cdp, `composer.title.focus()`);
   await r.type('Call the plumber');
-  await evaluate(cdp, `document.querySelector('#composer .ed-body').focus()`);
+  await evaluate(cdp, `composer.bodyEl.focus()`);
   await r.type('Kitchen tap drips. Tuesday after 4 pm works.', 3);
   await r.frame(4);
   await r.key('Enter', 'Enter', 13, 2); // Ctrl+Enter: save and start the next note
@@ -245,51 +286,40 @@ async function gifCapture(cdp) {
   r.save('demo.gif');
 }
 
-// Theming: type a word, get a generated background; tune it in Settings.
-async function gifTheming(cdp) {
+// A new category while writing a note: palette, "main/sub", Enter.
+async function gifNewCategory(cdp) {
   const r = recorder(cdp);
-  await setup(cdp, DESKTOP, 'light', { 'mn.group': false });
+  await setup(cdp, DESKTOP);
   await settle(cdp);
   await r.frame(6);
-  await r.click(card('Podcast recommendations'));
-  await blur(cdp);
-  await r.hold(600);
-  await r.click(`document.querySelector('#modalEditor [data-a="color"]')`);
-  await r.hold(500);
-  await r.click(`document.querySelector('#palette .cat-input')`);
-  await r.type('music', 1);
+  await r.click(`document.querySelector('#composer')`);
+  await evaluate(cdp, `composer.title.focus()`);
+  await r.type('Basil cuttings');
+  await evaluate(cdp, `composer.bodyEl.focus()`);
+  await r.type('Root them in water, pot up after 2 weeks.', 3);
+  await r.frame(3);
+  await r.click(`document.querySelector('#composer [data-a="color"]')`);
+  await r.hold(700);
+  await r.click(`palInput`);
+  await r.type('Garden/Herbs', 1);
+  await r.hold(400);
   await r.key('Enter', 'Enter', 13, 0, '\r');
+  await r.hold(1000);
+  await evaluate(cdp, `composer.bodyEl.focus()`);
+  await r.key('Enter', 'Enter', 13, 2);
   await blur(cdp);
-  await r.hold(1200);
-  await r.click(`document.querySelector('#modalEditor [data-a="color"]')`);
-  await r.hold(500);
-  await r.click(`document.querySelector('#palette .cat-input')`);
-  await r.type('ocean', 1);
-  await r.key('Enter', 'Enter', 13, 0, '\r');
-  await blur(cdp);
-  await r.hold(1200);
-  await evaluate(cdp, `closeModal()`);
   await settle(cdp);
   await r.hold(800);
-  await r.click(`document.querySelector('#settingsBtn')`);
+  await r.click(`document.querySelector('#sidebar [data-view="cat:' + categories().find(c => catName(c) === 'Garden').term + '"]')`);
   await settle(cdp);
-  await r.hold(500);
-  await r.click(`document.querySelector('#setTab-categories')`);
-  await r.hold(500);
-  const row = `document.querySelector('.set-pane .cat[data-term="ocean"]')`;
-  await r.click(`${row}.querySelector('[data-toggle]')`);
-  await r.hold(600);
-  const slider = k => `${row}.querySelector('input[data-k="${k}"]')`;
-  await r.slide(slider('h'), [...range(0, 120, 10), ...range(110, -60, -10)]);
-  await r.slide(slider('c'), range(0, 60, 5));
-  await r.hold(1500);
-  r.save('theming.gif');
+  await r.hold(1800);
+  r.save('new-category.gif');
 }
 
-// Sorting: Keep has none. Group by category, collapse groups, resize cards.
+// Sorting and grouping: Keep has neither.
 async function gifSorting(cdp) {
   const r = recorder(cdp);
-  await setup(cdp, DESKTOP, 'light', { 'mn.group': false });
+  await setup(cdp, DESKTOP, { 'mn.group': false });
   await settle(cdp);
   await r.frame(8);
   await r.click(`document.querySelector('#sortBtn')`);
@@ -301,13 +331,20 @@ async function gifSorting(cdp) {
   await r.hold(500);
   await r.click(`document.querySelector('#sortMenu [data-group-toggle]')`);
   await settle(cdp);
-  await r.hold(1500);
-  await r.click(`document.querySelector('#board [data-group="books"]')`);
+  await r.hold(1600);
+  await r.click(`document.querySelector('#sortBtn')`);
+  await r.hold(500);
+  await r.click(`document.querySelector('#sortMenu [data-subs-toggle]')`);
   await settle(cdp);
-  await r.hold(600);
-  await r.click(`document.querySelector('#board [data-group="garden"]')`);
+  await r.hold(1300);
+  await r.click(`document.querySelector('#sortBtn')`);
+  await r.hold(500);
+  await r.click(`document.querySelector('#sortMenu [data-subs-toggle]')`);
   await settle(cdp);
-  await r.hold(1200);
+  await r.hold(1000);
+  await r.click(`document.querySelector('#board [data-group="ai"]')`);
+  await settle(cdp);
+  await r.hold(1000);
   await r.click(`document.querySelector('#zoomBtn')`);
   await r.hold(500);
   const zoom = `document.querySelector('#zoomMenu input[type=range]')`;
@@ -318,41 +355,46 @@ async function gifSorting(cdp) {
   r.save('sorting.gif');
 }
 
-// Categories: each one is a sidebar view; a note written there joins it.
-async function gifCategories(cdp) {
+// Colours and icons in Settings: swatch, fine-tune, icon, then patterns.
+async function gifColours(cdp) {
   const r = recorder(cdp);
-  await setup(cdp, DESKTOP, 'dark', { 'mn.group': false });
+  await setup(cdp, DESKTOP);
   await settle(cdp);
   await r.frame(6);
-  await r.click(`document.querySelector('#sidebar [data-view="cat:travel"]')`);
+  await r.click(`document.querySelector('#settingsBtn')`);
   await settle(cdp);
-  await r.hold(1200);
-  await r.click(`document.querySelector('#sidebar [data-view="cat:recipes"]')`);
-  await settle(cdp);
-  await r.hold(1000);
-  await r.click(`document.querySelector('#sidebar [data-view="cat:travel"]')`);
-  await settle(cdp);
+  await r.hold(400);
+  await r.click(`document.querySelector('#setTab-categories')`);
   await r.hold(500);
-  await r.click(`document.querySelector('#composer')`);
-  await evaluate(cdp, `document.querySelector('#composer .ed-title').focus()`);
-  await r.type('Weekend in the Alps');
-  await evaluate(cdp, `document.querySelector('#composer .ed-body').focus()`);
-  await r.type('Train Friday 17:12. Hut booked for 2 nights.', 3);
-  await r.frame(4);
-  await r.key('Enter', 'Enter', 13, 2);
-  await blur(cdp);
+  const row = `[...document.querySelectorAll('.set-pane .cat')].find(x => catName(findCategory(x.dataset.term)) === 'Travel')`;
+  await r.click(`${row}.querySelector('[data-toggle]')`);
+  await r.hold(700);
+  await r.click(`${row}.querySelector('[data-swatch="cyan"]')`);
+  await r.hold(700);
+  await r.click(`${row}.querySelector('[data-swatch="orange"]')`);
+  await r.hold(700);
+  await r.click(`${row}.querySelector('.cat-tune summary')`);
+  await r.hold(500);
+  const slider = k => `${row}.querySelector('input[data-k="${k}"]')`;
+  await r.slide(slider('h'), [...range(0, 30, 4), ...range(26, -20, -4), ...range(-16, 0, 4)]);
+  await r.slide(slider('c'), range(0, 60, 6));
+  await r.hold(600);
+  await r.click(`${row}.querySelector('[data-icon="globe"]')`);
+  await r.hold(1000);
+  await evaluate(cdp, `scrollTo({ top: 0 })`);
+  await r.hold(300);
+  await r.click(`catPatternsBox`);
+  await r.hold(600);
+  await r.click(`document.querySelector('#brand')`);
   await settle(cdp);
-  await r.hold(1200);
-  await r.click(`document.querySelector('#sidebar [data-view="notes"]')`);
-  await settle(cdp);
-  await r.hold(1800);
-  r.save('categories.gif');
+  await r.hold(2200);
+  r.save('colours.gif');
 }
 
 // Keyboard: a key per category, Alt+Down steps through them, subs included.
 async function gifKeyboard(cdp) {
   const r = recorder(cdp);
-  await setup(cdp, DESKTOP, 'light', { 'mn.group': false, 'mn.navShow': 'both' });
+  await setup(cdp, DESKTOP, { 'mn.group': false, 'mn.navShow': 'both' });
   await blur(cdp);
   await settle(cdp);
   await r.frame(8);
@@ -361,14 +403,15 @@ async function gifKeyboard(cdp) {
     let b = document.getElementById('demo-key');
     if (!b) { b = document.createElement('div'); b.id = 'demo-key'; document.body.append(b);
       b.style.cssText = 'position:fixed;z-index:99999;right:24px;bottom:24px;padding:10px 18px;border-radius:10px;' +
-        'background:rgba(20,20,20,.82);color:#fff;font:600 22px system-ui;box-shadow:0 2px 10px rgba(0,0,0,.3)'; }
+        'background:rgba(240,240,240,.9);color:#111;font:600 22px system-ui;box-shadow:0 2px 10px rgba(0,0,0,.5)'; }
     b.textContent = ${JSON.stringify(label)};
   })()`);
-  const keyOf = term => evaluate(cdp, `[...navKeyMap].find(([, t]) => t === ${JSON.stringify(term)})[0]`);
-  for (const term of ['recipes', 'books', 'travel']) {
-    const k = await keyOf(term);
+  const keyOf = name => evaluate(cdp, `[...navKeyMap].find(([, t]) => sameTerm(t, categories().find(c => catName(c) === ${JSON.stringify(name)}).term))[0]`);
+  for (const name of ['Recipes', 'Books', 'Travel']) {
+    const k = await keyOf(name);
     await badge(k.toUpperCase());
-    await r.key(k, 'Digit' + k, k.toUpperCase().charCodeAt(0), 0, k);
+    const code = /\d/.test(k) ? 'Digit' + k : 'Key' + k.toUpperCase();
+    await r.key(k, code, k.toUpperCase().charCodeAt(0), 0, k);
     await settle(cdp);
     await r.hold(900);
   }
@@ -393,10 +436,10 @@ async function gifs(cdp) {
     return;
   }
   await gifKeyboard(cdp); // changes nothing, so first
-  await gifCapture(cdp);
   await gifSorting(cdp);
-  await gifCategories(cdp);
-  await gifTheming(cdp);
+  await gifCapture(cdp);
+  await gifNewCategory(cdp);
+  await gifColours(cdp); // changes Travel's look and turns patterns on: last
 }
 
 mkdirSync(OUT, { recursive: true });

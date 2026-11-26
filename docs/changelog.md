@@ -20,6 +20,24 @@ live in each browser's localStorage, so reverting code never touches notes.
   "Show the main category on cards" (synced, default on): a sub's tag
   reads "AI › LLMs". Five more icons (person, cooking pot, cocktail, piggy
   bank, shapes) with name hints. Revert with the same commit.
+- **Settings › Icons tab**. Lists every category's icon and
+  why it got it, with a picker, and every available icon with its built-in
+  words and your own words (synced `settings.iconWords`), so names like
+  people's map to an icon without putting them in the public code.
+  Revert: `git revert` the commit; stored words are then ignored.
+- **Drag and drop in Settings › Categories**. Drag a row by
+  its grip to reorder it, or onto a main category to make it a
+  sub-category there; mouse and touch. Reordering switches the order to
+  Custom. One Undo. Revert: `git revert` the commit.
+- **Group by sub-category**. With "Group by category" on,
+  each main category's section is split by its sub-categories. Sort menu
+  › "Sub-categories too" (per device, default on). Revert: `git revert`
+  the commit.
+- **README and screenshots reworked**. All screenshots and
+  GIFs in dark mode, regenerated from new demo data (sub-categories,
+  palette colours, icon words, formatted notes). New sections: categories,
+  colours/icons/patterns, icon words, sorting and grouping, formatting and
+  shortcuts, Keep import. Revert: `git revert` the commit.
 
 - **Note formatting, Markdown or rich editor** (GitHub v1.6.0). Bold, italic,
   underline, strikethrough and two heading levels in text notes, with
