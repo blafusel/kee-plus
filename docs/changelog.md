@@ -6,6 +6,21 @@ live in each browser's localStorage, so reverting code never touches notes.
 
 ## 2026-11-26
 
+- **Category colours and icons.** One palette colour per main
+  category, shared by its subs; notes are flat tinted cards with a colour
+  strip on top; tags show the category's icon and own name. Settings ›
+  Categories: "Icons" (default on) and "Background patterns" (the old
+  generated patterns, now in the palette colour; default off). Each main
+  category picks a swatch and can be fine-tuned; any category can pick an
+  icon (Auto guesses from the name). Why: owner's mock-up; siblings were
+  hard to tell apart by shifted hues. Revert: `git revert` the commit; the
+  added `swatch`/`tune`/`icon` fields are then ignored and the old h/s/v/c
+  values still apply.
+- **Main category on card tags.** Settings › Categories ›
+  "Show the main category on cards" (synced, default on): a sub's tag
+  reads "AI › LLMs". Five more icons (person, cooking pot, cocktail, piggy
+  bank, shapes) with name hints. Revert with the same commit.
+
 - **Note formatting, Markdown or rich editor** (GitHub v1.6.0). Bold, italic,
   underline, strikethrough and two heading levels in text notes, with
   Ctrl+B/I/U, Ctrl+Shift+X/1/2/0 and buttons in the phone editor. Stored as

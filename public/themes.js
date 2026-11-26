@@ -1,6 +1,8 @@
 'use strict';
 /*
- * Note themes: background images generated from a category term and a seed.
+ * Note themes: background images generated from a category term and a seed
+ * (optional, Settings › Categories › Background patterns), and the look
+ * (flat tint or pattern, accent colours) a category gives its notes.
  *
  * No AI and no network. The term picks a hue range and a set of motifs:
  * from a small keyword table when it knows the word, from a hash of the
@@ -244,42 +246,58 @@ function themeSvg(term, seed, dark, adj = NO_ADJ) {
   return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${W} ${H}" preserveAspectRatio="xMidYMid slice"><rect width="${W}" height="${H}" fill="${col.bg}"/>${out.join('')}</svg>`;
 }
 
-// CSS values for a theme, cached: cards re-render often and the strings never change.
+// CSS values for a category's look, cached: cards re-render often and the
+// strings never change. look = { term (the word patterns are drawn from),
+// hue, sat (palette), tune (fine-tune), pattern (draw the background image) }.
+// Without a pattern the card is a flat tint of the hue.
 const themeCache = new Map();
-function themeVars(theme, adj) {
-  const key = [theme.term, theme.seed, adj.h, adj.s, adj.v, adj.c].join('\n');
+function lookVars(look) {
+  const t = cleanTune(look.tune);
+  const key = [look.term, look.hue, look.sat, t.h, t.s, t.v, t.c, look.pattern ? 1 : 0].join('\n');
   let v = themeCache.get(key);
   if (!v) {
     if (themeCache.size > 500) themeCache.clear(); // slider drags make many one-off keys
-    const light = themeSvg(theme.term, theme.seed, false, adj), dark = themeSvg(theme.term, theme.seed, true, adj);
-    const uri = svg => 'url("data:image/svg+xml,' + encodeURIComponent(svg) + '")';
-    const bg = svg => /<rect [^>]*fill="([^"]+)"/.exec(svg)[1]; // base colour, for UI drawn on top
-    v = { tl: uri(light), td: uri(dark), nl: bg(light), nd: bg(dark) };
+    const col = lookColors(look.hue, look.sat, t);
+    v = { tl: 'none', td: 'none', nl: col.bgL, nd: col.bgD, al: col.accL, ad: col.accD, xl: col.txtL, xd: col.txtD };
+    if (look.pattern) {
+      // The pattern keeps its shapes; its hue range is moved onto the palette hue.
+      const shift = ((col.H - themeHue(look.term) + 540) % 360) - 180;
+      const adj = { h: shift, s: Math.min(4, 2 * t.s), v: t.v, c: t.c };
+      const light = themeSvg(look.term, 0, false, adj), dark = themeSvg(look.term, 0, true, adj);
+      const uri = svg => 'url("data:image/svg+xml,' + encodeURIComponent(svg) + '")';
+      const bg = svg => /<rect [^>]*fill="([^"]+)"/.exec(svg)[1]; // base colour, for UI drawn on top
+      Object.assign(v, { tl: uri(light), td: uri(dark), nl: bg(light), nd: bg(dark) });
+    }
     v.il = inkFor(v.nl); v.id = inkFor(v.nd); // text colour per scheme
     themeCache.set(key, v);
   }
   return v;
 }
 
-// Paint an element (card, editor, palette tile) with a theme, or clear it.
-// adj: the category's colour adjustment (none if the category is gone).
-function applyTheme(el, theme, adj) {
-  const props = ['--tl', '--td', '--tnl', '--tnd'];
-  if (!theme || !theme.term) {
+const LOOK_PROPS = ['--tl', '--td', '--tnl', '--tnd', '--tal', '--tad', '--tcl', '--tcd'];
+// Paint an element (card, editor, palette tile) with a category's look, or clear it.
+function applyTheme(el, look) {
+  if (!look) {
     delete el.dataset.themed;
+    delete el.dataset.flat;
     delete el.dataset.inkL;
     delete el.dataset.inkD;
-    for (const p of props) el.style.removeProperty(p);
+    for (const p of LOOK_PROPS) el.style.removeProperty(p);
     return;
   }
-  // One look per category: every note of a term draws seed 0, whatever seed
-  // it stores (older notes have random ones).
-  const v = themeVars({ term: theme.term, seed: 0 }, cleanAdj(adj));
+  const v = lookVars(look);
   el.dataset.themed = '';
-  el.style.setProperty('--tl', v.tl);
-  el.style.setProperty('--td', v.td);
-  el.style.setProperty('--tnl', v.nl);
-  el.style.setProperty('--tnd', v.nd);
+  if (look.pattern) delete el.dataset.flat; else el.dataset.flat = '';
+  const vals = [v.tl, v.td, v.nl, v.nd, v.al, v.ad, v.xl, v.xd];
+  LOOK_PROPS.forEach((p, i) => el.style.setProperty(p, vals[i]));
   el.dataset.inkL = v.il; // app.css picks the text colour from these
   el.dataset.inkD = v.id;
+}
+
+// Only the category's accent colours (icons, dots, chips on the page).
+function tint(el, look) {
+  if (!look) { delete el.dataset.tinted; for (const p of LOOK_PROPS.slice(4)) el.style.removeProperty(p); return; }
+  const v = lookVars({ ...look, pattern: false });
+  el.dataset.tinted = '';
+  [v.al, v.ad, v.xl, v.xd].forEach((x, i) => el.style.setProperty(LOOK_PROPS[4 + i], x));
 }

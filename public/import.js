@@ -66,7 +66,7 @@ function keepToNote(j, key) {
 // Make sure the category exists, so the sidebar shows it and its colours apply.
 function ensureImportCategory() {
   const cats = categories();
-  if (!cats.some(c => sameTerm(c.term, IMPORT_TERM))) setCategories([...cats, { term: IMPORT_TERM, ...NO_ADJ }]);
+  if (!cats.some(c => sameTerm(c.term, IMPORT_TERM))) setCategories([...cats, { term: IMPORT_TERM }]);
 }
 
 // Store a note as given (keeps Keep's timestamps), through the normal

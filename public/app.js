@@ -118,8 +118,11 @@ function touched(id) {
 // wins on the whole record, like a note. It carries title/body so code that
 // treats it as a note doesn't crash.
 const isSettings = n => n.id === SETTINGS_ID;
-// Categories: [{ term, h, s, v }] (colour adjustment, see cleanAdj). The
-// first release stored plain strings; read those as { term }.
+// Categories: [{ term, name?, parent?, swatch?, tune?, icon? }]. A main
+// category has a palette colour (swatch, CAT_PALETTE) and a fine-tune (tune,
+// cleanTune); its subs share both. icon: a CAT_ICONS id, else guessed from the
+// name. Older records also carry h/s/v/c (the old pattern sliders, unused).
+// The first release stored plain strings; read those as { term }.
 function categories() {
   const s = notes.get(SETTINGS_ID);
   if (!s || s.deleted || !Array.isArray(s.categories)) return [];
@@ -168,13 +171,66 @@ function catFamily(term) {
 // The main category of a term (itself for a main one or an unknown term).
 function mainTerm(term) { const c = findCategory(term), p = catParent(c); return p ? p.term : c ? c.term : term; }
 function catLabel(term) { const c = findCategory(term), p = catParent(c); return p ? `${catName(p)} › ${catName(c)}` : c ? catName(c) : term; }
-// A sub-category draws its parent's pattern with its own colour adjustment,
-// which starts as the parent's with a hue shift (subAdj).
-// A renamed category keeps its look: `look` holds the word it is drawn from.
+// A sub-category draws its parent's pattern and colour (catLook).
+// A renamed category keeps its pattern: `look` holds the word it is drawn from.
 function drawTerm(term) {
   const c = findCategory(term), m = catParent(c) || c;
   return m ? (typeof m.look === 'string' && m.look ? m.look : m.term) : term;
 }
+
+// A main category in a list of categories (setCategories works on new lists).
+const isMainIn = (cats, c) => typeof c.parent !== 'string' || sameTerm(c.parent, c.term) || !cats.some(x => sameTerm(x.term, c.parent) && !(typeof x.parent === 'string' && cats.some(y => sameTerm(y.term, x.parent))));
+// Palette colour per main category: its own swatch, else the next one no
+// other main uses, in created order. setCategories stores them, so removing a
+// category never recolours the others.
+function swatchMap(cats) {
+  const out = new Map(), taken = new Set(), mains = cats.filter(c => isMainIn(cats, c));
+  for (const c of mains) if (paletteEntry(c.swatch)) { out.set(c.term.toLowerCase(), c.swatch); taken.add(c.swatch); }
+  let i = 0;
+  for (const c of mains) {
+    if (out.has(c.term.toLowerCase())) continue;
+    const p = CAT_PALETTE.find(x => !taken.has(x[0])) || CAT_PALETTE[i++ % CAT_PALETTE.length];
+    taken.add(p[0]);
+    out.set(c.term.toLowerCase(), p[0]);
+  }
+  return out;
+}
+let swatchCache = { at: null, map: new Map() };
+function swatchOf(main) {
+  const s = notes.get(SETTINGS_ID), at = s ? s.updatedAt : 0;
+  if (swatchCache.at !== at) swatchCache = { at, map: swatchMap(categories()) };
+  return swatchCache.map.get(main.term.toLowerCase()) || CAT_PALETTE[0][0];
+}
+const settingsRec = () => { const s = notes.get(SETTINGS_ID); return s && !s.deleted ? s : {}; };
+// Settings › Categories switches, synced: patterns behind notes (default off), icons and the main category on card tags (default on).
+const catPatterns = () => settingsRec().catPatterns === true;
+const catIcons = () => settingsRec().catIcons !== false;
+const catTagMain = () => settingsRec().catTagMain !== false;
+// The look a category gives its notes (themes.js applyTheme): its main
+// category's palette colour and fine-tune, and the pattern word.
+// An unknown term (category removed) gets a hue from its word.
+function catLook(term, tune) {
+  const c = findCategory(term), m = catParent(c) || c, pe = m ? paletteEntry(swatchOf(m)) : null;
+  return { term: drawTerm(term), hue: pe ? pe[2] : themeHue(term), sat: pe ? pe[3] : 50, tune: tune || (m ? m.tune : null), pattern: catPatterns() };
+}
+function iconOf(term) {
+  const c = findCategory(term);
+  return c && CAT_ICONS[c.icon] ? c.icon : guessIcon(c ? catName(c) : term);
+}
+function catIconEl(term, id) {
+  const svg = icon('x');
+  svg.setAttribute('class', 'ic cat-ic');
+  svg.firstChild.setAttribute('href', '#ci-' + (id || iconOf(term)));
+  return svg;
+}
+// Sidebar and search-chip mark: the icon in the category colour, or a dot
+// in that colour when icons are off.
+function catMark(el, term) {
+  tint(el, term ? catLook(term) : null);
+  el.replaceChildren(term ? catIconEl(term) : '');
+  return el;
+}
+document.querySelector('svg defs').insertAdjacentHTML('beforeend', catIconSymbols());
 
 // Rename a category: only its name changes. Its key stays, so notes, views,
 // folds and the custom order need no update. The name must be free among its
@@ -191,9 +247,6 @@ function renameCategory(from, input) {
   toast(`Renamed "${old}" to "${to}"`, () => { setCategories(before); navCatsKey = ''; });
   return cat.term;
 }
-const wrapH = x => ((x + 180) % 360 + 360) % 360 - 180;
-const SUB_SHIFTS = [25, -25, 50, -50, 75, -75, 100, -100];
-function subAdj(parent, k) { const a = cleanAdj(parent); return { ...a, h: wrapH(a.h + SUB_SHIFTS[k % SUB_SHIFTS.length]) }; }
 
 // Add a category, or find it, and return its term. "travel/lisbon" or a
 // parent (a main category's term, from a select) adds a sub-category,
@@ -216,15 +269,14 @@ function addCategory(input, parentTerm = '') {
   if (p && sameTerm(catName(p), name)) return p.term; // "travel/travel" is the main itself
   if (parentName && !p) {
     const key = uniqueKey([parentName], cats);
-    p = withName({ term: key, ...NO_ADJ }, parentName);
+    p = withName({ term: key }, parentName);
     cats = [...cats, p];
   } else {
     const known = findChild(name, p ? p.term : '');
     if (known) return known.term;
   }
   const key = uniqueKey(p ? [name, `${catName(p)}/${name}`] : [name], cats);
-  const k = p ? cats.filter(c => typeof c.parent === 'string' && sameTerm(c.parent, p.term)).length : 0;
-  setCategories([...cats, withName(p ? { term: key, ...subAdj(p, k), parent: p.term } : { term: key, ...NO_ADJ }, name)]);
+  setCategories([...cats, withName(p ? { term: key, parent: p.term } : { term: key }, name)]);
   return key;
 }
 
@@ -264,14 +316,17 @@ function baseOrder() {
 }
 
 // Paint with the category's current colours; a removed category paints unadjusted.
-function paint(el, theme) { applyTheme(el, theme && theme.term ? { ...theme, term: drawTerm(theme.term) } : theme, theme && theme.term && findCategory(theme.term)); }
+function paint(el, theme) { applyTheme(el, theme && theme.term ? catLook(theme.term) : null); }
 function setSettings(patch) {
   if (notes.has(SETTINGS_ID)) return updateNote(SETTINGS_ID, { ...patch, deleted: false });
   const t = Date.now();
   notes.set(SETTINGS_ID, normalize({ id: SETTINGS_ID, kind: 'settings', title: '', body: '', categories: [], ...patch, deleted: false, createdAt: t, updatedAt: t }));
   touched(SETTINGS_ID);
 }
-function setCategories(cats) { setSettings({ categories: cats }); }
+function setCategories(cats) {
+  const sw = swatchMap(cats); // store every main's colour, so it never shifts
+  setSettings({ categories: cats.map(c => (isMainIn(cats, c) && !paletteEntry(c.swatch) ? { ...c, swatch: sw.get(c.term.toLowerCase()) } : c)) });
+}
 
 // Custom note colours: settings.colors = { red: { hex, name }, … }, synced.
 // Only changed colours are stored; the rest keep the CSS defaults.
@@ -529,6 +584,7 @@ class Editor {
   titleHint() {
     this.root.classList.toggle('title-first', titleFirst);
     this.title.placeholder = this.mode === 'inline' && titleFirst && !this.expanded ? 'Take a note…' : 'Title';
+    autosize(this.title); // it measured 0 while the collapsed composer hid it
   }
 
   // In a category view a new note starts with that category's theme.
@@ -639,9 +695,10 @@ class Editor {
     // A click opens the palette, as the palette button does.
     const tag = $('.ed-theme', this.root);
     const term = d.theme && d.theme.term;
-    tag.textContent = term ? catLabel(term) : d.color && d.color !== 'default' ? colorName(d.color) : '';
-    tag.hidden = !tag.textContent;
-    tag.title = tag.ariaLabel = (term ? 'Category: ' : 'Colour: ') + tag.textContent;
+    const text = term ? catLabel(term) : d.color && d.color !== 'default' ? colorName(d.color) : '';
+    tag.replaceChildren(...(term ? [catIconEl(term)] : []), text);
+    tag.hidden = !text;
+    tag.title = tag.ariaLabel = (term ? 'Category: ' : 'Colour: ') + text;
     const n = this.id && notes.get(this.id);
     this.edited.textContent = n && this.mode === 'modal' ? 'Edited ' + fmtTime(editedAt(n)) : '';
   }
@@ -1105,8 +1162,7 @@ function renderNavCats() {
   navKeyMap = catKeys(cats);
   const byTerm = new Map([...navKeyMap].map(([k, t]) => [t, k]));
   const entry = (term, sub) => {
-    const dot = h('span', { class: 'nav-dot' });
-    paint(dot, { term, seed: 0 });
+    const dot = catMark(h('span', { class: 'nav-dot' }), term);
     const k = byTerm.get(term), label = catLabel(term), n = counts.get(term.toLowerCase()) || 0, pn = pins.get(term.toLowerCase()) || 0;
     const tip = `${label}: ${n} note${n === 1 ? '' : 's'}` + (pn ? `, ${pn} pinned` : '') + (k ? ` · shortcut ${k.toUpperCase()}` : '');
     const cls = (n ? '' : ' nav-empty') + (term.toLowerCase() === keep ? ' nav-keep' : '');
@@ -1200,6 +1256,7 @@ function render() {
   clearTimeout(renderTimer);
   boardMore.hidden = true; // the gallery and panels have no batches; fillBoard() sets it
   loadSort();
+  document.documentElement.classList.toggle('cat-icons-on', catIcons());
   renderNavCats();
   applyUserColors();
   if (viewCat() !== null && !findCategory(viewCat())) { view = 'notes'; writeLS(K.view, view); } // category removed
@@ -1463,13 +1520,23 @@ function card(n) {
 // Bottom-left label: the note's category, else its colour name. Left out in
 // that category's or colour's own view, where every note has it.
 // Grouped, a main category's notes sit under its label; a sub's keep the tag.
-// A sub-category's tag names its main one too: "travel › lisbon".
+// A sub-category's tag shows its own name; the tooltip names its main one.
 function cardTag(n) {
   const term = n.theme && n.theme.term, vc = viewCat();
   const hide = !!term && ((vc !== null && sameTerm(term, vc)) || groupByCat === 'sub' || (groupByCat === 'main' && !catParent(findCategory(term))));
-  const text = term ? (hide ? '' : catLabel(term)) // a sub shows "main › sub"
-    : n.color && n.color !== 'default' ? colorName(n.color) : '';
-  return text ? h('span', { class: 'c-tag', title: term ? 'Category' : 'Colour' }, text) : null;
+  // The colour already names the main category, so a sub shows only its own
+  // name (with its icon); the full "main › sub" is the tooltip. With
+  // "Show the main category on cards" a sub's tag starts with its main's name,
+  // except where the view or the group label already names it.
+  if (!term || hide) return term ? null : colorTag(n);
+  const main = catParent(findCategory(term));
+  const showMain = main && catTagMain() && !(vc !== null && sameTerm(main.term, vc)) && groupByCat !== 'main';
+  return h('span', { class: 'c-tag', title: catLabel(term) }, catIconEl(term),
+    h('span', null, showMain ? h('span', { class: 'c-tag-main' }, catName(main) + ' \u203a ') : null, nameOf(term)));
+}
+function colorTag(n) {
+  const text = n.color && n.color !== 'default' ? colorName(n.color) : '';
+  return text ? h('span', { class: 'c-tag', title: 'Colour' }, text) : null;
 }
 
 // Masonry on CSS grid: rows are 4px tall and each card spans enough rows
@@ -2131,7 +2198,7 @@ function fillPalette() {
   palParent.dataset.want = '';
   const tile = (term, cls = '') => {
     const sel = !!cur && sameTerm(cur.term, term);
-    const b = h('button', { class: 'th' + cls + (sel ? ' sel' : ''), type: 'button', dataset: { term }, title: catLabel(term) }, h('span', null, nameOf(term)));
+    const b = h('button', { class: 'th' + cls + (sel ? ' sel' : ''), type: 'button', dataset: { term }, title: catLabel(term) }, catIconEl(term), h('span', null, nameOf(term)));
     paint(b, { term, seed: 0 });
     return b;
   };
@@ -2480,6 +2547,14 @@ async function runImport(input) {
 keepDir.addEventListener('change', () => runImport(keepDir));
 keepFiles.addEventListener('change', () => runImport(keepFiles));
 
+// Category look switches (synced, Settings › Categories).
+const catPatternsBox = h('input', { type: 'checkbox', class: 'set-check' });
+const catIconsBox = h('input', { type: 'checkbox', class: 'set-check' });
+const catTagMainBox = h('input', { type: 'checkbox', class: 'set-check' });
+catTagMainBox.addEventListener('change', () => { setSettings({ catTagMain: catTagMainBox.checked }); render(); });
+catPatternsBox.addEventListener('change', () => { setSettings({ catPatterns: catPatternsBox.checked }); render(); });
+catIconsBox.addEventListener('change', () => { setSettings({ catIcons: catIconsBox.checked }); navCatsKey = ''; render(); });
+
 // Category order: A–Z, created or custom (up/down buttons on each row).
 // Switching to custom starts from the order currently shown.
 const catOrderSeg = h('div', { class: 'seg', role: 'radiogroup', 'aria-label': 'Category order' },
@@ -2564,46 +2639,54 @@ const settingsEl = h('section', { class: 'settings' }, setTabBar,
     h('label', { class: 'set-range' }, h('span', { class: 'seg-label' }, 'Show for'), toastSecs, toastSecsVal))),
   setPane('categories',
   h('h2', null, 'Categories'),
-  h('p', { class: 'settings-hint' }, 'A category is a word. Its look is a background pattern drawn from that word: known words (ocean, forest, work, food, music, night…) get matching colours and shapes, any other word gets its own. Give a note a category from its palette button. Every note in the same category looks the same.'),
-  h('p', { class: 'settings-hint' }, 'A sub-category sits inside a main one: add it with + on the main category, pick "Under …" here, or type main/sub (travel/lisbon). It looks like its main category with a shifted colour, and opening the main category shows its sub-categories\u2019 notes too.'),
+  h('p', { class: 'settings-hint' }, 'Each main category has its own colour; its sub-categories share it and are told apart by their icon and name. Give a note a category from its palette button. Open a category below to change its colour, icon or place.'),
+  h('p', { class: 'settings-hint' }, 'A sub-category sits inside a main one: add it with + on the main category, pick "Under …" here, or type main/sub (travel/lisbon). Opening the main category shows its sub-categories\u2019 notes too.'),
+  h('label', { class: 'set-row' }, catIconsBox,
+    h('span', null, h('b', null, 'Icons'), h('span', { class: 'settings-hint' }, 'An icon per category in the sidebar, on cards and in the category picker, guessed from the name unless you pick one. Off: a coloured dot.'))),
+  h('label', { class: 'set-row' }, catTagMainBox,
+    h('span', null, h('b', null, 'Show the main category on cards'), h('span', { class: 'settings-hint' }, 'A sub-category\u2019s tag reads \u201cAI \u203a LLMs\u201d instead of \u201cLLMs\u201d. Left out where the view or the group already names the main category.'))),
+  h('label', { class: 'set-row' }, catPatternsBox,
+    h('span', null, h('b', null, 'Background patterns'), h('span', { class: 'settings-hint' }, 'Draw a pattern made from the category\u2019s name behind its notes, in its colour. Off: plain tinted cards.'))),
   h('form', { class: 'cat-add' }, catInput, catParentSel, h('button', { class: 'text-btn', type: 'submit' }, 'Add')),
   catOrderSeg,
   catList),
   setPane('import', importEl));
 showSetTab(setTab);
 
-// Colour sliders per category. They store a shift, not absolute colours, so
-// every variation of the category moves together and keeps its own look.
-const SLIDERS = [
+// Fine-tune sliders per main category, on top of its palette colour.
+const TUNE_SLIDERS = [
   // key, label, min, max, step, stored -> slider, slider -> stored, value text
-  ['h', 'Hue', -180, 180, 5, a => a.h, x => x, x => (x > 0 ? '+' : '') + x + '°'],
-  ['s', 'Saturation', 0, 400, 10, a => Math.round(a.s * 100), x => x / 100, x => x + '%'], // 400% = full
-  ['v', 'Brightness', -100, 100, 10, a => Math.round(a.v * 100), x => x / 100, x => (x > 0 ? '+' : '') + x],
-  ['c', 'Intensity', 0, 100, 5, a => Math.round(a.c * 100), x => x / 100, x => x + '%'], // 100% = vivid
+  ['h', 'Hue', -60, 60, 2, t => t.h, x => x, x => (x > 0 ? '+' : '') + x + '°'],
+  ['s', 'Saturation', 0, 200, 10, t => Math.round(t.s * 100), x => x / 100, x => x + '%'],
+  ['v', 'Brightness', -100, 100, 10, t => Math.round(t.v * 100), x => x / 100, x => (x > 0 ? '+' : '') + x],
+  ['c', 'Intensity', 0, 100, 5, t => Math.round(t.c * 100), x => x / 100, x => x + '%'],
 ];
-let openCat = null;   // term whose sliders are shown
+let openCat = null;   // term whose panel is shown
+let tuneOpen = false; // its Fine-tune section is open
 let catDrag = false;  // a slider is being dragged: don't rebuild the list under it
 
-function sliderTrack(key, term) {
-  const hue = themeHue(term);
-  if (key === 'h') return `linear-gradient(90deg, ${[0, 1, 2, 3, 4, 5, 6].map(i => `hsl(${hue - 180 + i * 60} 65% 72%)`).join(', ')})`;
-  if (key === 's') return `linear-gradient(90deg, hsl(${hue} 0% 72%), hsl(${hue} 100% 55%))`;
-  if (key === 'c') return `linear-gradient(90deg, hsl(${hue} 60% 92%), hsl(${hue} 100% 50%))`;
-  return `linear-gradient(90deg, hsl(${hue} 35% 28%), hsl(${hue} 50% 94%))`;
+function tuneTrack(key, hue) {
+  if (key === 'h') return `linear-gradient(90deg, hsl(${hue - 60} 65% 60%), hsl(${hue} 65% 60%), hsl(${hue + 60} 65% 60%))`;
+  if (key === 's') return `linear-gradient(90deg, hsl(${hue} 0% 60%), hsl(${hue} 100% 55%))`;
+  if (key === 'c') return `linear-gradient(90deg, hsl(${hue} 40% 92%), hsl(${hue} 70% 55%))`;
+  return `linear-gradient(90deg, hsl(${hue} 45% 25%), hsl(${hue} 60% 90%))`;
+}
+
+// Preview: a little card in the category's look, with its icon.
+function catTile(term, tune) {
+  const t = h('div', { class: 'cat-tile' }, catIconEl(term));
+  applyTheme(t, catLook(term, tune));
+  return t;
 }
 
 // i, all: position among its siblings (main categories, or one main's subs).
 function catRow(cat, i, all, mains) {
-  const { term } = cat, adj = cleanAdj(cat), open = openCat !== null && sameTerm(openCat, term);
+  const { term } = cat, open = openCat !== null && sameTerm(openCat, term);
   const parent = catParent(cat), subs = parent ? [] : subsOf(term);
-  const tiles = [0].map(seed => { // every note of a category looks the same (applyTheme)
-    const t = h('div', { class: 'cat-tile', dataset: { seed } });
-    applyTheme(t, { term: drawTerm(term), seed }, adj);
-    return t;
-  });
+  const tiles = [catTile(term)];
   const row = h('div', { class: 'cat' + (open ? ' open' : '') + (parent ? ' cat-sub' : ''), dataset: { term } },
     h('div', { class: 'cat-head' },
-      h('button', { class: 'cat-toggle', type: 'button', 'data-toggle': '', 'aria-expanded': String(open), title: 'Adjust colours' },
+      h('button', { class: 'cat-toggle', type: 'button', 'data-toggle': '', 'aria-expanded': String(open), title: 'Colour, icon and place' },
         h('div', { class: 'cat-prev' }, tiles),
         h('span', { class: 'cat-term' }, catName(cat), subs.length ? h('span', { class: 'cat-n' }, ` · ${subs.length} sub`) : null),
         icon('palette')),
@@ -2630,14 +2713,37 @@ function catRow(cat, i, all, mains) {
       fillParentSelect(sel, mains.filter(t => !sameTerm(t, term)), parent ? parent.term : '');
       where = h('label', { class: 'cat-slider cat-where' }, h('span', null, 'Place'), sel);
     }
-    row.append(h('div', { class: 'cat-adj' }, where,
-      SLIDERS.map(([key, label, min, max, step, toSlider, , text]) => {
-        const val = toSlider(adj);
-        const input = h('input', { type: 'range', min, max, step, value: val, 'data-k': key, 'aria-label': label + ' ' + term });
-        input.style.setProperty('--track', sliderTrack(key, drawTerm(term)));
-        return h('label', { class: 'cat-slider' }, h('span', null, label), input, h('output', null, text(val)));
-      }),
-      h('button', { class: 'text-btn', type: 'button', 'data-reset': '', disabled: Object.keys(NO_ADJ).every(k => adj[k] === NO_ADJ[k]) }, 'Reset')));
+    const panel = [];
+    if (parent) panel.push(h('p', { class: 'settings-hint' }, `Colour: from ${catName(parent)}.`));
+    else {
+      const cur = swatchOf(cat), tune = cleanTune(cat.tune), look = catLook(term);
+      panel.push(h('div', { class: 'cat-field' }, h('span', null, 'Colour'),
+        h('div', { class: 'cat-swatches', role: 'radiogroup', 'aria-label': 'Colour of ' + catName(cat) },
+          CAT_PALETTE.map(([id, label, hh, ss]) => h('button', {
+            class: 'cat-swatch', type: 'button', role: 'radio', 'aria-checked': String(id === cur), 'aria-label': label, title: label,
+            'data-swatch': id, style: `--sw: hsl(${hh} ${ss}% 58%)`,
+          })))));
+      const fine = h('details', { class: 'cat-tune', open: tuneOpen },
+        h('summary', null, 'Fine-tune colour'),
+        TUNE_SLIDERS.map(([key, label, min, max, step, toSlider, , text]) => {
+          const val = toSlider(tune);
+          const input = h('input', { type: 'range', min, max, step, value: val, 'data-k': key, 'aria-label': label + ' ' + term });
+          input.style.setProperty('--track', tuneTrack(key, look.hue));
+          return h('label', { class: 'cat-slider' }, h('span', null, label), input, h('output', null, text(val)));
+        }),
+        h('button', { class: 'text-btn', type: 'button', 'data-reset': '', disabled: Object.keys(NO_TUNE).every(k => tune[k] === NO_TUNE[k]) }, 'Reset'));
+      panel.push(fine);
+    }
+    const curIcon = CAT_ICONS[cat.icon] ? cat.icon : '';
+    panel.push(h('div', { class: 'cat-field' }, h('span', null, 'Icon'),
+      h('div', { class: 'cat-icon-grid', role: 'radiogroup', 'aria-label': 'Icon of ' + catName(cat) },
+        h('button', { class: 'cat-icon-btn cat-icon-auto', type: 'button', role: 'radio', 'aria-checked': String(!curIcon), 'data-icon': '', title: 'Guess from the name' },
+          catIconEl(term, guessIcon(catName(cat))), h('span', null, 'Auto')),
+        Object.entries(CAT_ICONS).map(([id, [label]]) => h('button', {
+          class: 'cat-icon-btn', type: 'button', role: 'radio', 'aria-checked': String(id === curIcon), 'aria-label': label, title: label, 'data-icon': id,
+        }, catIconEl(term, id))))));
+    panel.push(where);
+    row.append(h('div', { class: 'cat-adj' }, panel));
   }
   return row;
 }
@@ -2646,6 +2752,9 @@ function renderSettings() {
   if (board.firstChild !== settingsEl || board.childNodes.length !== 1) board.replaceChildren(settingsEl);
   renderImport();
   for (const r of catOrderSeg.querySelectorAll('input')) r.checked = r.value === catOrder();
+  catPatternsBox.checked = catPatterns();
+  catIconsBox.checked = catIcons();
+  catTagMainBox.checked = catTagMain();
   if (catDrag) return;
   if (document.activeElement && document.activeElement.matches('[data-rename-input]') && catList.contains(document.activeElement)) return; // don't wipe a name being typed
   const cats = orderedCats(), mains = cats.filter(c => !catParent(c)).map(c => c.term);
@@ -2658,26 +2767,20 @@ function renderSettings() {
   if (!cats.length) catList.append(h('p', { class: 'settings-hint' }, 'No categories yet.'));
 }
 
-// The adjustment currently shown by a row's sliders.
-function rowAdj(row) {
-  const adj = {};
-  for (const [key, , , , , , fromSlider] of SLIDERS) adj[key] = fromSlider(Number($(`input[data-k=${key}]`, row).value));
-  return adj;
+// The fine-tune currently shown by a row's sliders.
+function rowTune(row) {
+  const t = {};
+  for (const [key, , , , , , fromSlider] of TUNE_SLIDERS) t[key] = fromSlider(Number($(`input[data-k=${key}]`, row).value));
+  return t;
 }
-
-// A main category's change moves its subs by the same amount, so they stay
-// shifted versions of it.
-function saveAdj(term, adj) {
-  const cats = categories(), cur = cats.find(c => sameTerm(c.term, term));
-  if (!cur) return;
-  const old = cleanAdj(cur), main = !catParent(cur);
-  const clamp = (x, lo, hi) => Math.min(hi, Math.max(lo, x));
-  const subOf = c => { const p = main && catParent(c); return !!p && sameTerm(p.term, term); };
-  setCategories(cats.map(c => {
-    if (sameTerm(c.term, term)) return { ...c, ...adj };
-    if (!subOf(c)) return c;
-    const a = cleanAdj(c);
-    return { ...c, h: wrapH(a.h + adj.h - old.h), s: clamp(a.s + adj.s - old.s, 0, 4), v: clamp(a.v + adj.v - old.v, -1, 1), c: clamp(a.c + adj.c - old.c, 0, 1) };
+// Change one field of a category (colour, tune, icon). One Undo per change
+// would flood the toasts; the old value is a click away.
+function patchCategory(term, patch) {
+  setCategories(categories().map(c => {
+    if (!sameTerm(c.term, term)) return c;
+    const out = { ...c, ...patch };
+    for (const k of Object.keys(patch)) if (patch[k] === undefined) delete out[k];
+    return out;
   }));
 }
 
@@ -2727,6 +2830,7 @@ settingsEl.addEventListener('click', e => {
   }
   if (e.target.closest('[data-toggle]')) {
     openCat = openCat !== null && sameTerm(openCat, term) ? null : term;
+    tuneOpen = false;
     return render();
   }
   if (e.target.closest('[data-rename]')) {
@@ -2745,10 +2849,14 @@ settingsEl.addEventListener('click', e => {
   }
   if (e.target.closest('[data-reset]')) {
     const before = categories();
-    saveAdj(term, { ...NO_ADJ });
-    toast(`Colours of "${catLabel(term)}" reset`, () => setCategories(before));
+    patchCategory(term, { tune: undefined });
+    toast(`Colour of "${catLabel(term)}" reset`, () => setCategories(before));
     return render();
   }
+  const sw = e.target.closest('[data-swatch]');
+  if (sw) { patchCategory(term, { swatch: sw.dataset.swatch, tune: undefined }); navCatsKey = ''; return render(); }
+  const ib = e.target.closest('[data-icon]');
+  if (ib) { patchCategory(term, { icon: ib.dataset.icon || undefined }); navCatsKey = ''; return render(); }
   // Removing a category clears its theme from every note that has it
   // (archived and trashed too); its sub-categories become main ones. Undo
   // puts back the categories and each theme.
@@ -2761,6 +2869,8 @@ settingsEl.addEventListener('click', e => {
     setCategories(before.filter(c => !sameTerm(c.term, term)).map(c => {
       if (typeof c.parent !== 'string' || !sameTerm(c.parent, term)) return c;
       const { parent, ...rest } = c;
+      rest.swatch = swatchOf(gone); // promoted subs keep the colour they had
+      if (gone.tune) rest.tune = gone.tune;
       let name = catName(c);
       if (mainNames.has(name.toLowerCase())) name = `${name} (${catName(gone)})`; // keep main names unique
       mainNames.add(name.toLowerCase());
@@ -2780,10 +2890,10 @@ settingsEl.addEventListener('click', e => {
 settingsEl.addEventListener('input', e => {
   const input = e.target.closest('input[data-k]');
   if (!input) return;
-  const row = input.closest('.cat'), adj = rowAdj(row);
-  const sl = SLIDERS.find(x => x[0] === input.dataset.k);
+  const row = input.closest('.cat'), tune = rowTune(row);
+  const sl = TUNE_SLIDERS.find(x => x[0] === input.dataset.k);
   input.nextElementSibling.textContent = sl[7](Number(input.value));
-  for (const t of row.querySelectorAll('.cat-tile')) applyTheme(t, { term: drawTerm(row.dataset.term), seed: Number(t.dataset.seed) }, adj);
+  for (const t of row.querySelectorAll('.cat-tile')) applyTheme(t, catLook(row.dataset.term, tune));
 });
 settingsEl.addEventListener('change', e => {
   // Place: move a category under a main one (it takes that look, shifted)
@@ -2795,11 +2905,10 @@ settingsEl.addEventListener('change', e => {
     if (to && (!p || catParent(p))) return;
     const me = findCategory(term), clash = me && findChild(catName(me), p ? p.term : '');
     if (clash && !sameTerm(clash.term, term)) { toast(`There is already a category "${catLabel(clash.term)}"`); return render(); }
-    const k = p ? subsOf(p.term).length : 0;
     setCategories(before.map(c => {
       if (!sameTerm(c.term, term)) return c;
       const { parent, ...rest } = c;
-      return p ? { ...rest, ...subAdj(p, k), parent: p.term } : rest;
+      return p ? { ...rest, parent: p.term } : rest;
     }));
     toast(p ? `"${nameOf(term)}" moved under ${catName(p)}` : `"${nameOf(term)}" is a main category now`, () => setCategories(before));
     return render();
@@ -2808,7 +2917,9 @@ settingsEl.addEventListener('change', e => {
   if (!input) return;
   const row = input.closest('.cat'), term = row.dataset.term, key = input.dataset.k;
   catDrag = false;
-  saveAdj(term, rowAdj(row));
+  tuneOpen = true; // the sliders sit in the Fine-tune section
+  patchCategory(term, { tune: rowTune(row) });
+  navCatsKey = '';
   render();
   // Rebuilt row: keep keyboard focus on the slider so arrow keys keep working.
   const again = [...catList.querySelectorAll('.cat')].find(r => sameTerm(r.dataset.term, term));
@@ -2818,6 +2929,7 @@ settingsEl.addEventListener('keydown', e => {
   if (e.key === 'Escape' && e.target.matches('[data-rename-input]')) { e.preventDefault(); e.stopPropagation(); endRename(false); }
 });
 settingsEl.addEventListener('pointerdown', e => { if (e.target.closest('input[data-k]')) catDrag = true; });
+settingsEl.addEventListener('toggle', e => { if (e.target.matches('.cat-tune')) tuneOpen = e.target.open; }, true);
 addEventListener('pointerup', () => { catDrag = false; });
 addEventListener('pointercancel', () => { catDrag = false; });
 
@@ -2878,7 +2990,7 @@ function updateSearchChip(cat) {
     const label = catLabel(cat);
     if ($('#searchChipText').textContent !== label) {
       $('#searchChipText').textContent = label;
-      paint($('#searchChipDot'), { term: cat, seed: 0 });
+      catMark($('#searchChipDot'), cat);
     }
     searchChip.title = 'Searching in ' + label;
   }

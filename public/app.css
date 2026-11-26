@@ -70,6 +70,10 @@
   background-position: 0 0, center;
   background-repeat: repeat, no-repeat;
 }
+/* Category colours (caticons.js lookColors): --acc for strips, dots and
+   icons, --acc-text for labels. Flat looks have no image or grain. */
+[data-themed], [data-tinted] { --acc: var(--tal); --acc-text: var(--tcl); }
+[data-themed][data-flat] { background-image: none; }
 /* Theme ink: data-ink-l / data-ink-d come from the theme's base colour. */
 :is(.card, .editor)[data-themed][data-ink-l=dark] { --text: var(--ink-dark); --muted: var(--ink-dark-muted); --hover: var(--ink-dark-hover); }
 :is(.card, .editor)[data-themed][data-ink-l=light] { --text: var(--ink-light); --muted: var(--ink-light-muted); --hover: var(--ink-light-hover); }
@@ -81,7 +85,10 @@
     --grain: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='180' height='180'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.85' numOctaves='2' stitchTiles='stitch'/%3E%3CfeColorMatrix values='0 0 0 0 1 0 0 0 0 1 0 0 0 0 1 0 0 0 .07 0'/%3E%3C/filter%3E%3Crect width='180' height='180' filter='url(%23n)'/%3E%3C/svg%3E");
     background-image: var(--grain), var(--td);
   }
+  [data-themed], [data-tinted] { --acc: var(--tad); --acc-text: var(--tcd); }
+  [data-themed][data-flat] { background-image: none; }
 }
+.cat-ic { color: var(--acc-text, currentColor); }
 
 * { box-sizing: border-box; }
 [hidden] { display: none !important; }
@@ -138,7 +145,7 @@ kbd { font: 600 11px/1 var(--font); padding: 2px 5px; border: 1px solid var(--bo
   border-radius: 15px; background: var(--accent-soft); color: var(--text); font-size: 14px;
 }
 .search-chip #searchChipText { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.search-chip .nav-dot { flex: none; width: 14px; height: 14px; }
+.search-chip .nav-dot { flex: none; width: 16px; height: 16px; }
 .search-chip-x { flex: none; display: grid; place-items: center; width: 26px; height: 26px; border-radius: 50%; color: var(--muted); }
 .search-chip-x:hover { background: var(--hover); color: var(--text); }
 .search-chip-x .ic { width: 16px; height: 16px; }
@@ -216,7 +223,11 @@ body.side-mini .side-resize { display: none; }
 body.side-mini .nav-fold { display: none; }
 body.side-mini .nav-row > .nav-item { flex: none; padding-right: 14px; }
 body.side-mini .nav-sub { height: 40px; padding: 0 16px; }
-.nav-dot { width: 20px; height: 20px; flex: none; border-radius: 50%; box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--text) 15%, transparent); background-size: cover; }
+.nav-dot { width: 20px; height: 20px; flex: none; display: grid; place-items: center; border-radius: 50%; }
+/* Icons off: a dot in the category colour. On: the icon in that colour. */
+html:not(.cat-icons-on) .nav-dot { background: var(--acc, var(--muted)); transform: scale(.6); }
+.nav-dot .cat-ic { width: 100%; height: 100%; color: var(--acc); }
+html:not(.cat-icons-on) .nav-dot .cat-ic { display: none; }
 .nav-item > span:not(.nav-dot) { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 /* Category shortcut keys (setting; mouse devices only). */
 .nav-key {
@@ -302,6 +313,9 @@ main {
   font-size: 12px; line-height: 16px; color: var(--muted); background: color-mix(in srgb, var(--text) 8%, transparent);
 }
 .ed-theme:hover { color: var(--text); background: color-mix(in srgb, var(--text) 14%, transparent); }
+.editor[data-themed] .ed-theme { display: inline-flex; align-items: center; gap: 5px; color: var(--acc-text); background: color-mix(in srgb, var(--acc) 20%, transparent); }
+.editor[data-themed] .ed-theme:hover { background: color-mix(in srgb, var(--acc) 30%, transparent); }
+.ed-theme .cat-ic { width: 14px; height: 14px; }
 .editor.trashed .ed-theme { pointer-events: none; } /* read-only in Trash */
 .ed-edited { margin-left: auto; min-width: 0; padding: 0 8px; overflow: hidden; text-overflow: ellipsis; font-size: 12px; color: var(--muted); white-space: nowrap; }
 .ed-quick { display: none; }
@@ -502,6 +516,14 @@ body.banding, body.banding * { -webkit-user-select: none; user-select: none; }
   font-size: 12px; line-height: 16px; color: var(--muted); background: color-mix(in srgb, var(--text) 8%, transparent);
   transition: opacity .12s;
 }
+.card[data-themed] .c-tag {
+  display: inline-flex; align-items: center; gap: 5px; padding: 3px 9px 3px 7px; border-radius: 12px;
+  color: var(--acc-text); background: color-mix(in srgb, var(--acc) 20%, transparent); font-weight: 500;
+}
+.c-tag .cat-ic { width: 14px; height: 14px; flex: none; }
+.c-tag > span { overflow: hidden; text-overflow: ellipsis; }
+.c-tag-main { font-weight: 400; opacity: .8; }
+html:not(.cat-icons-on) .c-tag .cat-ic, html:not(.cat-icons-on) .ed-theme .cat-ic, html:not(.cat-icons-on) .th .cat-ic { display: none; }
 .card:hover .c-tag, .card:focus-within .c-tag { opacity: 0; }
 body.selecting .card .c-tag { opacity: 1; } /* actions stay hidden while selecting */
 .c-actions { display: flex; margin: 4px -8px -4px; opacity: 0; transition: opacity .12s; }
@@ -586,6 +608,9 @@ body.selecting .card .c-tag { opacity: 1; } /* actions stay hidden while selecti
   font-size: 11px; font-weight: 600; text-align: left;
 }
 .th span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.th[data-themed] { box-shadow: inset 4px 0 0 var(--acc); }
+.pal-themes .th { gap: 8px; }
+.th .cat-ic { width: 16px; height: 16px; flex: none; }
 .th:hover { border-color: var(--muted); }
 .th.sel { border-color: var(--text); }
 .pal-add { grid-column: 1 / -1; display: flex; flex-wrap: wrap; gap: 6px; }
@@ -683,7 +708,24 @@ html.no-nav-shortcuts .nav-hint { display: none !important; }
 .cat.open .cat-toggle > .ic, .cat-toggle:hover > .ic { color: var(--text); }
 .cat-toggle:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
 .cat-prev { display: flex; gap: 4px; flex: none; }
-.cat-tile { width: 44px; height: 56px; border-radius: 8px; }
+.cat-tile { width: 44px; height: 56px; border-radius: 8px; display: grid; place-items: center; border: 1px solid var(--border); }
+.cat-tile[data-themed] { border-color: transparent; border-top: 4px solid var(--acc); }
+.cat-tile .cat-ic { width: 22px; height: 22px; }
+html:not(.cat-icons-on) .cat-tile .cat-ic { display: none; }
+.cat-field { display: grid; grid-template-columns: 84px 1fr; align-items: start; gap: 12px; font-size: 13px; color: var(--muted); }
+.cat-field > span { padding-top: 6px; }
+.cat-swatches, .cat-icon-grid { display: flex; flex-wrap: wrap; gap: 6px; }
+.cat-swatch { width: 28px; height: 28px; border-radius: 50%; background: var(--sw); border: 2px solid transparent; box-shadow: inset 0 0 0 2px var(--surface); }
+.cat-swatch[aria-checked=true] { border-color: var(--text); }
+.cat-swatch:focus-visible, .cat-icon-btn:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.cat-icon-btn { width: 34px; height: 34px; display: grid; place-items: center; border-radius: 8px; border: 1px solid transparent; color: var(--text); }
+.cat-icon-btn .cat-ic { width: 18px; height: 18px; color: currentColor; }
+.cat-icon-btn:hover { background: var(--hover); }
+.cat-icon-btn[aria-checked=true] { border-color: var(--text); background: var(--hover); }
+.cat-icon-auto { width: auto; padding: 0 10px 0 8px; display: inline-flex; gap: 6px; font-size: 13px; }
+.cat-tune summary { cursor: pointer; font-size: 13px; color: var(--muted); padding: 4px 0; }
+.cat-tune[open] { display: grid; gap: 10px; }
+.cat-tune summary:hover { color: var(--text); }
 .cat-term { flex: 1; min-width: 0; font-weight: 600; overflow-wrap: anywhere; }
 .cat-adj { display: grid; gap: 10px; padding: 14px 4px 4px; }
 .cat-adj .text-btn { justify-self: start; margin-left: -8px; }
@@ -882,3 +924,7 @@ html[data-toast-pos="c"] .toast { inset: 0; margin: auto; width: fit-content; he
 }
 @keyframes slide { from { opacity: .4; transform: translateY(24px); } }
 @media (prefers-reduced-motion: reduce) { * { animation: none !important; transition: none !important; } }
+
+/* A category's card and editor: its colour as a strip along the top (last,
+   so it wins over the border-color resets above). */
+.card[data-themed], .editor[data-themed], .modal .editor[data-themed] { border-top: 4px solid var(--acc); }
