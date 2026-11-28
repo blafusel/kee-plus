@@ -57,6 +57,11 @@ sidebar entry to file it; one Undo puts it back.
   shortcut key, its note count (pinned ones in brackets), both or neither.
   Empty categories fade, or hide until you drag notes. "Find category"
   filters a long list.
+- **Bookmarks:** bookmark the categories you use most (hover a sidebar
+  entry and click its bookmark, or use the button in Settings › Categories)
+  and they get their own section at the top of
+  the sidebar, sub-categories included, as drop targets too. Settings ›
+  General can switch the section off.
 - **Search inside a category:** in a category view, search finds only that
   category's notes, shown as a chip in the search box. Remove the chip to
   widen the search to every note.

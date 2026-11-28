@@ -170,10 +170,24 @@ kbd { font: 600 11px/1 var(--font); padding: 2px 5px; border: 1px solid var(--bo
 }
 .nav-item:hover { background: var(--hover); }
 /* Drop target while notes are dragged onto a category (app.js NOTE_DRAG). */
-body.note-drag #navCats .nav-item { outline: 1px dashed color-mix(in srgb, var(--text) 30%, transparent); outline-offset: -3px; }
-#navCats .nav-item.drop { background: var(--accent-soft); outline: 2px solid var(--accent); outline-offset: -2px; }
+body.note-drag :is(#navCats, #navStars) .nav-item { outline: 1px dashed color-mix(in srgb, var(--text) 30%, transparent); outline-offset: -3px; }
+:is(#navCats, #navStars) .nav-item.drop { background: var(--accent-soft); outline: 2px solid var(--accent); outline-offset: -2px; }
 .nav-item.active { background: var(--accent-soft); font-weight: 600; }
 .nav-cats { display: contents; }
+/* Bookmarked categories: a section above the category list, never hidden
+   when empty (they are there on purpose). Off: html.no-nav-bookmarks. */
+.nav-stars { display: flex; flex-direction: column; gap: 2px; padding-bottom: 6px; margin-bottom: 4px; border-bottom: 1px solid var(--border); }
+.nav-stars[hidden] { display: none; }
+.nav-stars-label { margin: 6px 0 2px 24px; font-size: calc(11px * var(--ts, 1)); font-weight: 600; letter-spacing: .06em; text-transform: uppercase; color: var(--muted); }
+body.side-mini .nav-stars-label { display: none; }
+.cat-star.on { color: var(--accent); }
+/* Bookmark toggle in a sidebar category entry: on hover, mouse only. */
+.nav-star { display: none; place-items: center; width: 24px; height: 24px; border-radius: 50%; color: var(--muted); }
+.nav-star .ic { width: 16px; height: 16px; }
+.nav-star:hover { color: var(--text); background: var(--border); }
+.nav-star.on { color: var(--accent); }
+@media (hover: hover) and (pointer: fine) { .nav-item:hover > .nav-meta > .nav-star { display: grid; } }
+body.side-mini .nav-star, body.note-drag .nav-star, html.no-nav-bookmarks .nav-star { display: none !important; }
 /* Sub-categories: a fold button on the main entry, subs indented below. */
 .nav-row { position: relative; display: flex; }
 /* Sidebar "Find category" field, under Notes. */
@@ -193,8 +207,8 @@ body.side-mini .nav-find { display: none; }
 @media (max-width: 700px) { .nav-find input { font-size: 16px; } }
 html.no-alt-nav .alt-nav-key { display: none; }
 /* Empty categories: faded, or hidden by the setting except while dragging notes. */
-#navCats .nav-item.nav-empty { opacity: .5; }
-#navCats .nav-item.nav-empty.active { opacity: .75; }
+#navCats .nav-item.nav-empty, #navStars .nav-item.nav-empty { opacity: .5; }
+#navCats .nav-item.nav-empty.active, #navStars .nav-item.nav-empty.active { opacity: .75; }
 html.hide-empty body:not(.note-drag) #navCats:not(.filtering) .nav-empty:not(.active):not(.nav-keep) { display: none; }
 .nav-row > .nav-item { flex: 1; min-width: 0; padding-right: 48px; }
 /* Entries keep their height; a long list scrolls instead of squeezing them. */
@@ -693,6 +707,7 @@ body.selecting .card .c-tags { opacity: 1; } /* actions stay hidden while select
 /* Sidebar entries switched off in Settings (NAV_PARTS). */
 html.no-nav-find #navFind, html.no-nav-find .find-key,
 html.no-nav-pinned #sidebar [data-view="pinned"],
+html.no-nav-bookmarks #navStars,
 html.no-nav-attachments #sidebar [data-view="attachments"],
 html.no-nav-archive #sidebar [data-view="archive"],
 html.no-nav-trash #sidebar [data-view="trash"],

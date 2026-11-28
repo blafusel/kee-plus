@@ -345,6 +345,19 @@ function setSettings(patch) {
   notes.set(SETTINGS_ID, normalize({ id: SETTINGS_ID, kind: 'settings', title: '', body: '', categories: [], ...patch, deleted: false, createdAt: t, updatedAt: t }));
   touched(SETTINGS_ID);
 }
+// Bookmarked categories (settings.catStars, synced, a list of terms): their
+// own sidebar section above the category list, in category order. Removed
+// categories are skipped, so removing one needs no cleanup and its Undo
+// brings the bookmark back; a rename keeps the term.
+function rawStars() { const s = notes.get(SETTINGS_ID); return s && Array.isArray(s.catStars) ? s.catStars.filter(t => typeof t === 'string') : []; }
+function catStars() { const raw = rawStars(); return orderedCats().filter(c => raw.some(t => sameTerm(t, c.term))).map(c => c.term); }
+function isStarred(term) { return rawStars().some(t => sameTerm(t, term)); }
+function toggleStar(term) {
+  const before = rawStars(), on = isStarred(term);
+  setSettings({ catStars: on ? before.filter(t => !sameTerm(t, term)) : [...before, term] });
+  navCatsKey = '';
+  toast(on ? `Removed "${catLabel(term)}" from bookmarks` : `Bookmarked "${catLabel(term)}"`, () => { setSettings({ catStars: before }); navCatsKey = ''; });
+}
 function setCategories(cats) {
   const sw = swatchMap(cats); // store every main's colour, so it never shifts
   setSettings({ categories: cats.map(c => (isMainIn(cats, c) && !paletteEntry(c.swatch) ? { ...c, swatch: sw.get(c.term.toLowerCase()) } : c)) });
@@ -1131,7 +1144,7 @@ function draftTheme() {
 }
 
 // Sidebar entries for the categories, rebuilt only when the list changes.
-const navCats = $('#navCats');
+const navCats = $('#navCats'), navStars = $('#navStars');
 let navCatsKey = '';
 // Sidebar "Find category" field (per page, not saved).
 let navFind = '';
@@ -1178,19 +1191,27 @@ function renderNavCats() {
   const allPinned = [...notes.values()].filter(n => n.pinned && !n.deleted && !n.archived && !n.trashed && !isSettings(n)).length;
   const pc = document.getElementById('navPinnedCount');
   if (pc.textContent !== String(allPinned)) pc.textContent = String(allPinned);
-  const key = JSON.stringify([cats, [...navOpen], [...dragOpen], curMain, keep, [...counts], [...pins], navFind, !!dragIds]);
+  const stars = catStars();
+  const key = JSON.stringify([cats, [...navOpen], [...dragOpen], curMain, keep, [...counts], [...pins], navFind, !!dragIds, stars]);
   if (key === navCatsKey) return;
   navCatsKey = key;
   navKeyMap = catKeys(cats);
   const byTerm = new Map([...navKeyMap].map(([k, t]) => [t, k]));
-  const entry = (term, sub) => {
+  const starred = new Set(stars.map(t => t.toLowerCase()));
+  const entry = (term, sub, full) => { // full: "main › sub" (the Bookmarks section)
     const dot = catMark(h('span', { class: 'nav-dot' }), term);
     const k = byTerm.get(term), label = catLabel(term), n = counts.get(term.toLowerCase()) || 0, pn = pins.get(term.toLowerCase()) || 0;
     const tip = `${label}: ${n} note${n === 1 ? '' : 's'}` + (pn ? `, ${pn} pinned` : '') + (k ? ` · shortcut ${k.toUpperCase()}` : '');
     const cls = (n ? '' : ' nav-empty') + (term.toLowerCase() === keep ? ' nav-keep' : '');
     return h('button', { class: 'nav-item' + (sub ? ' nav-sub' : '') + cls, type: 'button', dataset: { view: 'cat:' + term }, title: tip },
-      dot, h('span', { class: 'nav-name' }, nameOf(term)),
+      dot, h('span', { class: 'nav-name' }, full ? catLabel(term) : nameOf(term)),
       h('span', { class: 'nav-meta' }, // count and key share one tight slot
+        // Bookmark toggle, shown on hover with a mouse (CSS). A span: an entry is
+        // a button and can't hold another. Settings › Categories has the
+        // keyboard-reachable one.
+        h('span', { class: 'nav-star' + (starred.has(term.toLowerCase()) ? ' on' : ''), 'data-star-nav': '', 'aria-hidden': 'true',
+          title: starred.has(term.toLowerCase()) ? 'Remove bookmark' : 'Bookmark: show at the top of the sidebar' },
+          icon(starred.has(term.toLowerCase()) ? 'bookmark-fill' : 'bookmark')),
         h('span', { class: 'nav-count', 'aria-label': `${n} note${n === 1 ? '' : 's'}` + (pn ? `, ${pn} pinned` : '') }, String(n),
           pn ? h('span', { class: 'nav-pins' }, ` (${pn})`) : null),
         k ? h('kbd', { class: 'nav-key', title: 'Shortcut key', 'aria-hidden': 'true' }, k.toUpperCase()) : null));
@@ -1219,6 +1240,8 @@ function renderNavCats() {
   }
   if (f && !items.length) items.push(h('p', { class: 'nav-none' }, 'No category matches'));
   navCats.replaceChildren(...items);
+  navStars.replaceChildren(...(stars.length ? [h('div', { class: 'nav-stars-label', 'aria-hidden': 'true' }, 'Bookmarks'), ...stars.map(t => entry(t, false, true))] : []));
+  navStars.hidden = !stars.length;
   navFindBox.hidden = !cats.length;
 }
 navCats.addEventListener('click', e => {
@@ -2009,7 +2032,7 @@ board.addEventListener('dragstart', e => {
 function endNoteDrag() {
   dragIds = null;
   document.body.classList.remove('note-drag');
-  for (const t of navCats.querySelectorAll('.drop')) t.classList.remove('drop');
+  for (const t of $('#sidebar').querySelectorAll('.drop')) t.classList.remove('drop');
   springAt('');
   dragOpen.clear();
   navCatsKey = ''; renderNavCats(); // fold back what the drag opened
@@ -2034,24 +2057,25 @@ function springAt(term) {
 board.addEventListener('dragend', endNoteDrag);
 // The fold button counts as its main category's entry.
 const catTarget = e => (dragIds && e.target.closest
-  ? e.target.closest('#navCats [data-view^="cat:"]') || e.target.closest('#navCats .nav-row')?.querySelector('[data-view^="cat:"]') || null
+  ? e.target.closest(':is(#navCats, #navStars) [data-view^="cat:"]') || e.target.closest('#navCats .nav-row')?.querySelector('[data-view^="cat:"]') || null
   : null);
-navCats.addEventListener('dragover', e => {
+// The Bookmarks section takes drops like the category list.
+for (const box of [navCats, navStars]) box.addEventListener('dragover', e => {
   const t = catTarget(e);
   const fold = t && t.parentElement.classList.contains('nav-row') && t.nextElementSibling;
   springAt(fold && !fold.classList.contains('open') ? t.dataset.view.slice(4) : '');
   if (!t) return;
   e.preventDefault();
   e.dataTransfer.dropEffect = 'move';
-  for (const o of navCats.querySelectorAll('.drop')) if (o !== t) o.classList.remove('drop');
+  for (const o of $('#sidebar').querySelectorAll('.drop')) if (o !== t) o.classList.remove('drop');
   t.classList.add('drop');
 });
-navCats.addEventListener('dragleave', e => {
-  if (!navCats.contains(e.relatedTarget)) springAt(''); // left the sidebar: don't open late
+for (const box of [navCats, navStars]) box.addEventListener('dragleave', e => {
+  if (!box.contains(e.relatedTarget)) springAt(''); // left the sidebar: don't open late
   const t = catTarget(e);
   if (t && !t.contains(e.relatedTarget)) t.classList.remove('drop');
 });
-navCats.addEventListener('drop', e => {
+for (const box of [navCats, navStars]) box.addEventListener('drop', e => {
   const t = catTarget(e);
   if (!t) return;
   e.preventDefault();
@@ -2452,7 +2476,7 @@ applyNavPins();
 // Sidebar entries that can be switched off (per device; by default all on
 // except the shortcuts list).
 // Their views still work (e.g. a stored view, Alt+arrows skip nothing).
-const NAV_PARTS = [['find', 'Find category field'], ['pinned', 'Pinned'], ['attachments', 'Attachments'], ['archive', 'Archive'], ['trash', 'Trash'], ['shortcuts', 'Shortcuts list']];
+const NAV_PARTS = [['find', 'Find category field'], ['pinned', 'Pinned'], ['bookmarks', 'Bookmarked categories'], ['attachments', 'Attachments'], ['archive', 'Archive'], ['trash', 'Trash'], ['shortcuts', 'Shortcuts list']];
 // Unset: only the shortcuts list is off.
 function navHidden() { const v = readLS(K.navHide, ['shortcuts']); return new Set(Array.isArray(v) ? v : []); }
 function applyNavHide() { const hid = navHidden(); for (const [id] of NAV_PARTS) document.documentElement.classList.toggle('no-nav-' + id, hid.has(id)); }
@@ -2864,6 +2888,8 @@ function catRow(cat, i, all, mains) {
         h('div', { class: 'cat-prev' }, tiles),
         h('span', { class: 'cat-term' }, catName(cat), h('span', { class: 'cat-n', title: metaTitle }, ' · ' + meta.join(' · '))),
         icon('palette')),
+      h('button', { class: 'icon-btn cat-star' + (isStarred(term) ? ' on' : ''), type: 'button', 'data-star': '', 'aria-pressed': String(isStarred(term)),
+        'aria-label': 'Bookmark ' + catLabel(term), title: isStarred(term) ? 'Remove from sidebar bookmarks' : 'Bookmark: show at the top of the sidebar' }, icon(isStarred(term) ? 'bookmark-fill' : 'bookmark')),
       h('button', { class: 'icon-btn', type: 'button', 'data-rename': '', 'aria-label': 'Rename ' + term, title: 'Rename' }, icon('pencil')),
       parent ? null : h('button', { class: 'icon-btn', type: 'button', 'data-addsub': '', 'aria-label': 'Add a sub-category to ' + term, title: 'Add sub-category' }, icon('plus')),
       catOrder() === 'custom' ? [
@@ -3007,6 +3033,13 @@ settingsEl.addEventListener('click', e => {
     openCat = openCat !== null && sameTerm(openCat, term) ? null : term;
     tuneOpen = false;
     return render();
+  }
+  if (e.target.closest('[data-star]')) {
+    toggleStar(term);
+    render();
+    const again = [...catList.querySelectorAll('.cat')].find(r => sameTerm(r.dataset.term, term));
+    $('[data-star]', again)?.focus();
+    return;
   }
   if (e.target.closest('[data-rename]')) {
     renamingCat = term;
@@ -3335,6 +3368,12 @@ $('#brand').addEventListener('click', goHome);
 $('#settingsBtn').addEventListener('click', () => setView(view === 'settings' ? 'notes' : 'settings'));
 $('#brand').addEventListener('keydown', e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); goHome(); } });
 $('#sidebar').addEventListener('click', e => {
+  const st = e.target.closest('[data-star-nav]');
+  if (st) { // the bookmark toggle inside a category entry: don't open it
+    const v = st.closest('[data-view^="cat:"]');
+    if (v) { toggleStar(v.dataset.view.slice(4)); render(); }
+    return;
+  }
   const b = e.target.closest('[data-view]');
   // Clicking the active category or colour again goes back to all notes.
   if (b) setView(b.dataset.view === view && /^(cat|color):/.test(view) ? 'notes' : b.dataset.view);
