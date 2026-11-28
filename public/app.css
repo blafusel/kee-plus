@@ -534,15 +534,20 @@ html:not(.cat-icons-on) .c-tag .cat-ic, html:not(.cat-icons-on) .ed-theme .cat-i
 /* The fading tag (opacity < 1 makes a stacking context) would paint over the
    actions in the same grid cell and take their clicks: lift the actions, and
    let clicks pass through the hidden tag. */
-.card:hover .c-tag, .card:focus-within .c-tag { opacity: 0; pointer-events: none; }
-body.selecting .card .c-tag { opacity: 1; } /* actions stay hidden while selecting */
+.c-tags { display: flex; align-items: center; gap: 6px; min-width: 0; max-width: 100%; justify-self: start; transition: opacity .12s; }
+.c-tags > .c-tag { min-width: 0; }
+.card .c-tag.c-arch { flex: none; display: inline-flex; align-items: center; gap: 4px; padding: 2px 8px 2px 6px; font-weight: 500; color: var(--text); border: 1px dashed color-mix(in srgb, var(--text) 45%, transparent); background: none; }
+.card .c-tag.c-arch .ic { width: 13px; height: 13px; }
+#board.in-archive .c-arch { display: none; }
+.card:hover .c-tags, .card:focus-within .c-tags { opacity: 0; pointer-events: none; }
+body.selecting .card .c-tags { opacity: 1; } /* actions stay hidden while selecting */
 .c-actions { position: relative; z-index: 1; display: flex; margin: 4px -8px -4px; opacity: 0; transition: opacity .12s; }
 .c-actions .icon-btn { width: 34px; height: 34px; }
 .c-actions .ic, .c-pin .ic { width: 18px; height: 18px; }
 .card:hover .c-pin, .card:hover .c-actions, .card:focus-within .c-actions, .card:focus-within .c-pin { opacity: 1; }
 @media (hover: none) {
   .c-actions, .c-pin:not(.on) { display: none; }
-  .card:focus-within .c-tag { opacity: 1; }
+  .card:focus-within .c-tags { opacity: 1; }
   .card { padding-bottom: 12px; }
 }
 

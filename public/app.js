@@ -1288,6 +1288,8 @@ function render() {
   updateSearchChip(cat);
   $('#settingsBtn').classList.toggle('active', view === 'settings');
   const q = query.trim().toLowerCase();
+  if (!q) searchFolds.clear();
+  board.classList.toggle('in-archive', view === 'archive' && !q); // every card there is archived
   const panel = view === 'settings' && !q;
   if (view === 'attachments' || panel) clearSel();
   if (view === 'attachments') {
@@ -1336,7 +1338,7 @@ function render() {
   // ('sub', also only with "Sub-categories too"): its own notes first, then
   // one section per sub in Settings order.
   const catSubs = cat !== null && findCategory(cat) && !catParent(findCategory(cat)) ? subsOf(cat) : [];
-  groupByCat = groupCats && !q ? (!cat ? (groupSubs ? 'tree' : 'main') : catSubs.length && groupSubs ? 'sub' : false) : false;
+  groupByCat = groupCats ? (!cat ? (groupSubs ? 'tree' : 'main') : catSubs.length && groupSubs ? 'sub' : false) : false;
   const pinFirst = ns => ns.filter(n => n.pinned).concat(ns.filter(n => !n.pinned));
   if (groupByCat === 'sub') {
     const main = findCategory(cat).term;
@@ -1371,15 +1373,19 @@ function render() {
       // The main section's label counts every note of the family; folding it
       // folds its sub-sections too.
       sections.push([nameOf(term), pinFirst(ns.filter(n => !inSubs.has(n))), key, { n: ns.length }]);
-      if (!collapsed.has(key)) sections.push(...subSecs);
+      if (!folds().has(key)) sections.push(...subSecs);
     }
     if (none.length) sections.push(['No category', pinFirst(none), '']);
+  }
+  const resultLabel = q && list.length ? `${list.length} result${list.length > 1 ? 's' : ''}${cat ? ' in ' + catLabel(cat) : ''}` : null;
+  if (groupByCat) {
+    if (resultLabel) sections.unshift([resultLabel, []]); // a label with no cards above the groups
   } else if (!q && (view === 'notes' || cat)) {
     const pinned = list.filter(n => n.pinned), others = list.filter(n => !n.pinned);
     if (pinned.length) sections.push(['Pinned', pinned]);
     if (others.length) sections.push([pinned.length ? 'Others' : null, others]);
   } else if (list.length) {
-    sections.push([q ? `${list.length} result${list.length > 1 ? 's' : ''}${cat ? ' in ' + catLabel(cat) : ''}` : null, list]);
+    sections.push([resultLabel, list]);
   }
   const anchor = scrollAnchor();
   // Same view, query and order as last time (a sync, an edit, closing a
@@ -1427,7 +1433,7 @@ function fillBoard(n) {
       let head = null, cls = 'grid', shut = false;
       if (key === undefined) head = label ? h('h2', { class: 'section-label' }, label) : null;
       else {
-        shut = collapsed.has(key);
+        shut = folds().has(key);
         cls = 'grid group' + (shut ? ' shut' : '') + (opt.sub ? ' group-sub' : '') + (opt.n && !ns.length && !shut ? ' group-bare' : '');
         head = h('h2', { class: 'section-label' },
           h('button', { class: 'group-btn', type: 'button', 'aria-expanded': String(!shut), dataset: { group: key } },
@@ -1513,14 +1519,18 @@ function restoreScroll(anchor) {
 
 // Group by category: the grid has one section per category (render), and each group
 // can be collapsed. Collapsed groups are a per-device preference, like sort.
-let groupByCat = false; // false, 'main' or 'sub' (see render)
+// Search results start with every group open, so a saved fold never hides a
+// match; folds made while searching last until the search is cleared.
+let groupByCat = false; // false, 'main', 'tree' or 'sub' (see render)
 const collapsed = new Set(readLS(K.collapsed, []));
+const searchFolds = new Set();
+const folds = () => (query.trim() ? searchFolds : collapsed);
 board.addEventListener('click', e => {
   const b = e.target.closest('.group-btn');
   if (!b) return;
-  const key = b.dataset.group;
-  if (!collapsed.delete(key)) collapsed.add(key);
-  writeLS(K.collapsed, [...collapsed]);
+  const key = b.dataset.group, f = folds();
+  if (!f.delete(key)) f.add(key);
+  if (f === collapsed) writeLS(K.collapsed, [...collapsed]);
   render();
 });
 
@@ -1549,7 +1559,9 @@ function card(n) {
   }
   if (docs.length) el.append(cardDocs(docs));
   if (!hasContent(n)) el.append(h('div', { class: 'c-empty' }, 'Empty note'));
-  el.append(h('div', { class: 'c-foot' }, cardTag(n), h('div', { class: 'c-actions' }, n.trashed
+  // Archived notes say so (search results, category views); Archive hides it.
+  const tags = [cardTag(n), n.archived && !n.trashed ? h('span', { class: 'c-tag c-arch', title: 'In Archive' }, icon('archive'), h('span', null, 'Archived')) : null].filter(Boolean);
+  el.append(h('div', { class: 'c-foot' }, tags.length ? h('div', { class: 'c-tags' }, tags) : null, h('div', { class: 'c-actions' }, n.trashed
     ? [iconBtn('restore', 'Restore', 'restore'), iconBtn('purge', 'Delete forever', 'purge')]
     : [iconBtn('palette', 'Category', 'color'),
       n.archived ? iconBtn('unarchive', 'Unarchive', 'unarchive') : iconBtn('archive', 'Archive', 'archive'),
